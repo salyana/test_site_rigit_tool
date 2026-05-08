@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RigIt.ai — Matchstick Scaffold Planner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23080E1C'/><rect x='8' y='6' width='2' height='20' rx='1' fill='%2322d3ee'/><rect x='14' y='6' width='2' height='20' rx='1' fill='%2322d3ee'/><rect x='20' y='6' width='2' height='20' rx='1' fill='%2322d3ee'/><rect x='7' y='10' width='18' height='2' rx='1' fill='%230ea5e9'/><rect x='7' y='18' width='18' height='2' rx='1' fill='%230ea5e9'/></svg>">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.0.0/dist.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+/* ── Base ──────────────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;color:#e2e8f0;}
+#map{position:absolute;inset:0;}
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl{margin-left:16px;margin-bottom:16px;}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl{margin-right:16px;margin-bottom:16px;}
+.maplibregl-ctrl-attrib{display:none!important;}
+
+/* ── Panel base ────────────────────────────────────────────────── */
+.panel{
+  background:rgba(8,14,28,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid rgba(34,211,238,.13);border-radius:14px;padding:16px;
+  color:#cbd5e1;font-size:13px;line-height:1.5;pointer-events:auto;
+}
+.panel h2{font-size:14px;font-weight:600;color:#f1f5f9;margin-bottom:6px;letter-spacing:.02em;}
+.panel .subtitle{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
+.panel .stat{display:flex;justify-content:space-between;align-items:center;padding:3px 0;}
+.panel .stat .label{color:#64748b;font-size:12px;}
+.panel .stat .value{color:#22d3ee;font-weight:600;font-variant-numeric:tabular-nums;font-size:12px;}
+.panel .stat .value.amber{color:#fbbf24;}
+.panel .stat .value.green{color:#4ade80;}
+.panel .stat .value.big{font-size:16px;color:#f1f5f9;}
+.divider{height:1px;background:rgba(34,211,238,.08);margin:8px 0;}
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+#sidebar{
+  position:absolute;top:16px;left:16px;width:280px;z-index:10;
+  display:flex;flex-direction:column;gap:10px;pointer-events:none;
+  max-height:calc(100vh - 32px);overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:rgba(34,211,238,.2) transparent;
+}
+#sidebar::-webkit-scrollbar{width:4px;}
+#sidebar::-webkit-scrollbar-thumb{background:rgba(34,211,238,.2);border-radius:2px;}
+#sidebar .panel{pointer-events:auto;}
+#app-title{
+  font-size:19px;font-weight:700;margin-bottom:2px;
+  background:linear-gradient(135deg,#22d3ee 0%,#0ea5e9 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#sidebar-toggle{
+  display:none;position:fixed;top:16px;left:16px;z-index:30;
+  background:rgba(8,14,28,.9);border:1px solid rgba(34,211,238,.2);border-radius:10px;
+  color:#22d3ee;padding:8px 12px;cursor:pointer;font-size:18px;pointer-events:auto;
+  backdrop-filter:blur(12px);
+}
+#instructions{font-size:11px;color:#94a3b8;line-height:1.65;}
+#instructions kbd{
+  background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.2);
+  border-radius:3px;padding:1px 4px;font-size:10px;color:#22d3ee;font-family:inherit;
+}
+
+/* ── Pricing panel ─────────────────────────────────────────────── */
+.price-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;}
+.price-row .pl{color:#64748b;}
+.price-row .pv{color:#cbd5e1;font-variant-numeric:tabular-nums;}
+.price-row .pv.cyan{color:#22d3ee;font-weight:600;}
+.price-total{
+  margin-top:8px;padding:10px;border-radius:8px;
+  background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.15);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.price-total .label{font-size:12px;color:#94a3b8;}
+.price-total .amount{font-size:18px;font-weight:700;color:#22d3ee;font-variant-numeric:tabular-nums;}
+.price-total .amount.vat{color:#fbbf24;}
+
+.duration-select{
+  width:100%;margin:6px 0;padding:6px 10px;
+  background:rgba(14,22,42,.8);border:1px solid rgba(34,211,238,.18);border-radius:7px;
+  color:#e2e8f0;font-size:12px;outline:none;cursor:pointer;
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2322d3ee'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;
+}
+.vat-toggle{display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;user-select:none;}
+.vat-toggle input[type=checkbox]{accent-color:#22d3ee;width:14px;height:14px;cursor:pointer;}
+.vat-toggle span{font-size:12px;color:#94a3b8;}
+
+.building-breakdown{margin-top:8px;}
+.bldg-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:4px 8px;border-radius:5px;background:rgba(34,211,238,.04);margin-bottom:3px;
+  font-size:11px;
+}
+.bldg-item .bn{color:#cbd5e1;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bldg-item .bc{color:#fbbf24;font-weight:600;}
+
+/* ── Export buttons ────────────────────────────────────────────── */
+.export-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:2px;}
+.btn{
+  padding:8px 4px;border-radius:8px;border:1px solid rgba(34,211,238,.2);
+  background:rgba(14,22,42,.7);color:#94a3b8;font-size:11px;font-weight:500;
+  cursor:pointer;text-align:center;transition:all .18s;display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.btn:hover{background:rgba(34,211,238,.1);border-color:rgba(34,211,238,.4);color:#22d3ee;}
+.btn .bico{font-size:16px;line-height:1;}
+.btn.primary{background:rgba(14,165,233,.15);border-color:rgba(14,165,233,.4);color:#38bdf8;}
+.btn.primary:hover{background:rgba(14,165,233,.28);color:#7dd3fc;}
+.btn.copied{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);color:#4ade80;}
+
+/* ── Right panels ──────────────────────────────────────────────── */
+#debug-panel{position:absolute;top:16px;right:16px;width:210px;z-index:10;}
+#snap-panel{position:absolute;top:280px;right:16px;width:210px;z-index:10;transition:opacity .25s;}
+#snap-panel.hidden{opacity:0;pointer-events:none;}
+
+/* ── Geocoder ──────────────────────────────────────────────────── */
+#geocoder{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:20;width:340px;}
+#geocoder-input{
+  width:100%;padding:9px 14px 9px 36px;
+  background:rgba(8,14,28,.9);backdrop-filter:blur(16px);
+  border:1px solid rgba(34,211,238,.2);border-radius:10px;
+  color:#f1f5f9;font-size:13px;outline:none;transition:border-color .2s;
+}
+#geocoder-input::placeholder{color:#475569;}
+#geocoder-input:focus{border-color:rgba(34,211,238,.5);}
+#geocoder-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#475569;font-size:15px;pointer-events:none;}
+#geocoder-results{
+  position:absolute;top:44px;left:0;right:0;
+  background:rgba(8,14,28,.97);backdrop-filter:blur(16px);
+  border:1px solid rgba(34,211,238,.15);border-radius:10px;overflow:hidden;display:none;
+}
+#geocoder-results .result-item{
+  padding:9px 14px;cursor:pointer;font-size:12px;color:#cbd5e1;
+  border-bottom:1px solid rgba(255,255,255,.04);transition:background .12s;
+}
+#geocoder-results .result-item:hover{background:rgba(34,211,238,.08);color:#f1f5f9;}
+#geocoder-results .result-item:last-child{border-bottom:none;}
+
+/* ── Status pill ───────────────────────────────────────────────── */
+#status-pill{
+  position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:10;
+  padding:5px 16px;border-radius:20px;font-size:12px;font-weight:500;
+  letter-spacing:.03em;transition:all .25s;pointer-events:none;
+}
+#status-pill.loading{background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.3);color:#fbbf24;}
+#status-pill.ready{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);color:#4ade80;}
+#status-pill.error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171;}
+#status-pill.snap{background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.25);color:#22d3ee;}
+#status-pill.hidden{opacity:0;}
+
+/* ── Shortcuts hint ────────────────────────────────────────────── */
+#shortcuts-pill{
+  position:absolute;bottom:22px;right:16px;z-index:10;
+  padding:5px 12px;border-radius:20px;font-size:10px;color:#475569;
+  background:rgba(8,14,28,.6);border:1px solid rgba(255,255,255,.05);
+  pointer-events:none;letter-spacing:.04em;
+}
+
+/* ── Height labels ─────────────────────────────────────────────── */
+.height-label{
+  position:absolute;transform:translate(-50%,-100%);
+  background:rgba(8,14,28,.82);border:1px solid rgba(34,211,238,.25);
+  border-radius:5px;padding:2px 6px;font-size:10px;color:#22d3ee;
+  pointer-events:none;white-space:nowrap;z-index:5;
+  transition:opacity .2s;backdrop-filter:blur(6px);
+}
+
+/* ── Spinner ───────────────────────────────────────────────────── */
+@keyframes spin{to{transform:rotate(360deg);}}
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid rgba(251,191,36,.3);border-top-color:#fbbf24;border-radius:50%;animation:spin .7s linear infinite;margin-right:5px;vertical-align:middle;}
+
+/* ── Counter animate ───────────────────────────────────────────── */
+@keyframes countPop{0%{transform:scale(1.4);color:#22d3ee;}100%{transform:scale(1);}}
+.count-pop{animation:countPop .35s ease-out;}
+
+/* ── Mobile ────────────────────────────────────────────────────── */
+@media(max-width:680px){
+  #debug-panel,#snap-panel,#shortcuts-pill{display:none;}
+  #sidebar{display:none;top:56px;max-height:calc(100vh - 72px);}
+  #sidebar.open{display:flex;}
+  #sidebar-toggle{display:block;}
+  #geocoder{width:calc(100% - 120px);left:60px;transform:none;}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Mobile sidebar toggle -->
+<button id="sidebar-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+
+<!-- Left sidebar -->
+<div id="sidebar">
+
+  <!-- Branding + instructions -->
+  <div class="panel">
+    <div id="app-title">RigIt.ai</div>
+    <div class="subtitle">Matchstick scaffold planner</div>
+    <div id="instructions">
+      <kbd>Click</kbd> wall → place bay &nbsp;|&nbsp; <kbd>Click</kbd> bay → stack<br>
+      <kbd>⇧+Click</kbd> bay → remove &nbsp;|&nbsp; <kbd>Esc</kbd> deselect<br>
+      <kbd>R</kbd> rotate 90° &nbsp;|&nbsp; <kbd>Del</kbd> undo last bay<br>
+      <kbd>G</kbd> grid &nbsp;|&nbsp; <kbd>H</kbd> height labels
+    </div>
+  </div>
+
+  <!-- Pricing panel -->
+  <div class="panel" id="pricing-panel">
+    <h2>Quote Estimate</h2>
+    <div class="subtitle">Live pricing</div>
+
+    <div class="price-row">
+      <span class="pl">Bays deployed</span>
+      <span class="pv cyan" id="pr-units">0</span>
+    </div>
+    <div class="price-row">
+      <span class="pl">Hire rate / bay / wk</span>
+      <span class="pv">£<input id="pr-rate" type="number" value="45" min="1" max="500"
+        style="width:46px;background:transparent;border:none;border-bottom:1px solid rgba(34,211,238,.3);
+               color:#cbd5e1;font-size:12px;text-align:right;outline:none;padding:0 2px;"></span>
+    </div>
+
+    <label style="display:block;font-size:11px;color:#64748b;margin-top:6px;">Estimated duration</label>
+    <select id="pr-weeks" class="duration-select">
+      <option value="1">1 week</option>
+      <option value="2">2 weeks</option>
+      <option value="4" selected>4 weeks</option>
+      <option value="6">6 weeks</option>
+      <option value="8">8 weeks</option>
+      <option value="12">12 weeks</option>
+      <option value="16">16 weeks</option>
+      <option value="20">20 weeks</option>
+      <option value="26">26 weeks</option>
+      <option value="39">39 weeks</option>
+      <option value="52">52 weeks</option>
+    </select>
+
+    <div class="divider"></div>
+    <div class="price-row"><span class="pl">Weekly hire</span>    <span class="pv" id="pr-hire">£0</span></div>
+    <div class="price-row"><span class="pl">Labour (erect+strip)</span><span class="pv" id="pr-labour">£0</span></div>
+    <div class="price-row"><span class="pl">Transport</span>      <span class="pv" id="pr-transport">£0</span></div>
+    <div class="divider"></div>
+
+    <label class="vat-toggle">
+      <input type="checkbox" id="pr-vat">
+      <span>Include VAT (20%)</span>
+    </label>
+
+    <div class="price-total" style="margin-top:10px;">
+      <span class="label" id="pr-vat-label">Total (ex VAT)</span>
+      <span class="amount" id="pr-total">£0</span>
+    </div>
+
+    <!-- Per-building breakdown -->
+    <div class="divider" id="breakdown-divider" style="display:none;"></div>
+    <div class="building-breakdown" id="bldg-breakdown"></div>
+  </div>
+
+  <!-- Export toolbar -->
+  <div class="panel">
+    <h2>Export</h2>
+    <div class="export-grid">
+      <button class="btn primary" onclick="downloadPDF()" title="Download PDF quote">
+        <span class="bico">📄</span><span>Quote PDF</span>
+      </button>
+      <button class="btn" id="btn-copy" onclick="copyLink()" title="Copy shareable link">
+        <span class="bico">🔗</span><span>Copy Link</span>
+      </button>
+      <button class="btn" onclick="takeScreenshot()" title="Save screenshot">
+        <span class="bico">📷</span><span>Screenshot</span>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- Right panels -->
+<div id="debug-panel" class="panel">
+  <h2>Diagnostics</h2>
+  <div class="stat"><span class="label">Buildings</span>   <span class="value" id="d-count">0</span></div>
+  <div class="stat"><span class="label">Vertices</span>    <span class="value" id="d-verts">0</span></div>
+  <div class="stat"><span class="label">Scaffolds</span>   <span class="value amber" id="d-scaffolds">0</span></div>
+  <div class="stat"><span class="label">Source</span>      <span class="value" id="d-source">--</span></div>
+  <div class="stat"><span class="label">Zoom</span>        <span class="value" id="d-zoom">--</span></div>
+  <div class="stat"><span class="label">Pitch</span>       <span class="value" id="d-pitch">--</span></div>
+  <div class="stat"><span class="label">Fetches</span>     <span class="value" id="d-fetches">0</span></div>
+  <div class="stat"><span class="label">Last fetch</span>  <span class="value" id="d-last">--</span></div>
+</div>
+
+<div id="basemap-panel" class="panel" style="position:absolute;top:280px;right:16px;width:210px;z-index:10;">
+  <h2>Base Map</h2>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+    <button id="basemap-toggle" class="btn" style="flex:1;padding:6px;flex-direction:row;gap:4px;" onclick="toggleBasemap()">Hide Map</button>
+  </div>
+  <div class="stat">
+    <span class="label">Opacity</span>
+    <input type="range" min="0" max="1" step="0.05" value="0.45" style="width:100px;accent-color:#22d3ee;" oninput="setBasemapOpacity(this.value)">
+  </div>
+  <div style="margin-top:6px;">
+    <select class="duration-select" onchange="switchBasemapLayer(this.value)">
+      <option value="Light_3857">OS Light</option>
+      <option value="Road_3857">OS Road</option>
+      <option value="Outdoor_3857">OS Outdoor</option>
+      <option value="Leisure_3857">OS Leisure</option>
+    </select>
+  </div>
+</div>
+
+<div id="snap-panel" class="panel hidden" style="top:430px !important;">
+  <h2>Wall Snap</h2>
+  <div class="stat"><span class="label">Building</span>    <span class="value" id="s-building">--</span></div>
+  <div class="stat"><span class="label">Wall</span>        <span class="value" id="s-wall">--</span></div>
+  <div class="stat"><span class="label">Length</span>      <span class="value" id="s-walllen">--</span></div>
+  <div class="stat"><span class="label">Grid cells</span>  <span class="value" id="s-cells">--</span></div>
+  <div class="stat"><span class="label">Placed</span>      <span class="value amber" id="s-placed">0</span></div>
+  <div class="stat"><span class="label">Grid pos</span>    <span class="value green" id="s-gridpos">--</span></div>
+</div>
+
+<!-- Geocoder -->
+<div id="geocoder">
+  <span id="geocoder-icon">&#x1F50D;</span>
+  <input id="geocoder-input" type="text" placeholder="Search address or place…" autocomplete="off">
+  <div id="geocoder-results"></div>
+</div>
+
+<div id="status-pill" class="ready">Ready</div>
+<div id="shortcuts-pill">R · Del · G · H</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
+const API_BASE        = 'http://localhost:3001';
+const R_EARTH         = 6371000;
+const DEG2RAD         = Math.PI / 180;
+const RAD2DEG         = 180 / Math.PI;
+const BAY_WIDTH       = 2.5;
+const BAY_DEPTH       = 1.2;
+const BAY_HEIGHT      = 2.5;
+const POLE_RADIUS     = 0.048;
+const PLANK_THICKNESS = 0.06;
+const MAX_SNAP_DIST   = 20;
+const PUSHOUT_MAX_ITER = 20;
+const _hw = BAY_WIDTH / 2;
+const _hd = BAY_DEPTH / 2;
+const LEDGER_CS = POLE_RADIUS * 2.2;
+
+// Demo / URL params
+const IS_DEMO = new URLSearchParams(location.search).has('demo');
+const _OLNG=-0.090, _OLAT=51.505;  // demo origin: Tower Bridge area
+const LPM=0.00001442;   // degrees-lng per metre at this latitude
+const APM=0.00000899;   // degrees-lat per metre
+
+// Pricing constants
+const RATE_LABOUR_ERECT    = 12;   // £ per bay
+const RATE_LABOUR_STRIP    = 8;    // £ per bay
+const RATE_TRANSPORT_LOAD  = 20;   // bays per lorry
+const RATE_TRANSPORT_LORRY = 180;  // £ per lorry trip
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+const allBuildings = new Map();
+let fetchCount = 0, isFetching = false, debounceTimer = null;
+let geoData = { groundPaths:[], roofPaths:[], verticalLines:[], nodes:[], polygons:[] };
+
+let selectedBuilding = null, selectedWall = null, hoveredWall = null, hoveredGridCol = -1;
+
+const placements   = new Map();   // wallId → Set<"col,row">
+const scaffoldBays = new Map();   // bayId  → {group,lng,lat,alt,headingDeg,wId,col,row,buildingId}
+const placedOrder  = [];          // bayId stack for undo (Delete key)
+
+let bayIdCounter = 0;
+let threeScene = null, threeCamera = null, threeRenderer = null, layerReady = false;
+let lastMatrix = null;
+
+// Scene origin in Mercator coords — all scaffold groups are positioned relative
+// to this point so that vertex coordinates stay small enough for Float32 GPU math.
+let sceneOriginMc = null;  // {x,y,z}
+
+// UI flags
+let gridVisible    = true;
+let labelsVisible  = false;
+let currentAddress = '';
+
+// deck.gl overlay caches
+let gridLines = [], gridCells = [], selectedBuildingOutline = [], highlightWallLine = [], snapMarker = [];
+
+// Height label DOM elements
+const heightLabels = new Map();  // buildingId → HTMLElement
+
+// ═══════════════════════════════════════════════════════════════════
+// GEO MATH
+// ═══════════════════════════════════════════════════════════════════
+function mPerDegLng(lat){ return R_EARTH*Math.cos(lat*DEG2RAD)*DEG2RAD; }
+function mPerDegLat()   { return R_EARTH*DEG2RAD; }
+function makeRef(ring)  { const lat=ring[0][1],lng=ring[0][0]; return {lat,lng,mLng:mPerDegLng(lat),mLat:mPerDegLat()}; }
+function toLocal(lng,lat,ref){ return [(lng-ref.lng)*ref.mLng,(lat-ref.lat)*ref.mLat]; }
+function toGlobal(mx,my,ref) { return [ref.lng+mx/ref.mLng,ref.lat+my/ref.mLat]; }
+
+function signedArea(pts){
+  let a=0; for(let i=0,n=pts.length;i<n;i++){const j=(i+1)%n;a+=pts[i][0]*pts[j][1]-pts[j][0]*pts[i][1];} return a/2;
+}
+function ensureCCW(pts)      { if(signedArea(pts)<0)pts.reverse(); return pts; }
+function centroid(pts)       { let cx=0,cy=0; for(const p of pts){cx+=p[0];cy+=p[1];} return [cx/pts.length,cy/pts.length]; }
+function dist2D(a,b)         { const dx=a[0]-b[0],dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
+function normalize2D(v)      { const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]); return l>1e-12?[v[0]/l,v[1]/l]:[0,0]; }
+
+function pointInPolygonRC(px,py,pts){
+  let inside=false;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+    if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function pointToSegmentDist(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(l2<1e-12)return dist2D([px,py],[ax,ay]);
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+  return dist2D([px,py],[ax+t*dx,ay+t*dy]);
+}
+function projectOnSegment(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(l2<1e-12)return{t:0,pt:[ax,ay]};
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+  return{t,pt:[ax+t*dx,ay+t*dy]};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SNAP ENGINE
+// ═══════════════════════════════════════════════════════════════════
+function buildSnapModel(feature){
+  const geom=feature.geometry;
+  const ring=geom.type==='Polygon'?geom.coordinates[0]:geom.type==='MultiPolygon'?geom.coordinates[0][0]:null;
+  if(!ring||ring.length<4)return null;
+  const ref=makeRef(ring);
+  let lp=[];
+  for(let i=0;i<ring.length;i++){
+    const lm=toLocal(ring[i][0],ring[i][1],ref);
+    if(i===ring.length-1&&Math.abs(lm[0]-lp[0]?.[0])<0.001&&Math.abs(lm[1]-lp[0]?.[1])<0.001)continue;
+    lp.push(lm);
+  }
+  if(lp.length<3)return null;
+  ensureCCW(lp);
+  const ctr=centroid(lp),area=Math.abs(signedArea(lp));
+  const edges=[];
+  for(let i=0;i<lp.length;i++){
+    const j=(i+1)%lp.length,a=lp[i],b=lp[j];
+    const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.sqrt(dx*dx+dy*dy);
+    if(len<0.01)continue;
+    let nx=dy/len,ny=-dx/len;
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    if(pointInPolygonRC(mx+nx*0.02,my+ny*0.02,lp)){nx=-nx;ny=-ny;}
+    edges.push({idx:i,a,b,normal:[nx,ny],length:len});
+  }
+  return{ref,localPts:lp,ctr,area,edges,ring};
+}
+
+function findBuilding(lng,lat){
+  const cands=[];
+  for(const[id,feature]of allBuildings){
+    const model=buildSnapModel(feature);if(!model)continue;
+    const cl=toLocal(lng,lat,model.ref),inside=pointInPolygonRC(cl[0],cl[1],model.localPts);
+    if(inside){cands.push({id,feature,model,clickLocal:cl,inside:true,dist:0,area:model.area});}
+    else{
+      let minD=Infinity;
+      for(const e of model.edges){const d=pointToSegmentDist(cl[0],cl[1],e.a[0],e.a[1],e.b[0],e.b[1]);if(d<minD)minD=d;}
+      if(minD<=MAX_SNAP_DIST)cands.push({id,feature,model,clickLocal:cl,inside:false,dist:minD,area:model.area});
+    }
+  }
+  if(!cands.length)return null;
+  const ins=cands.filter(c=>c.inside);
+  if(ins.length){ins.sort((a,b)=>a.area-b.area);return ins[0];}
+  cands.sort((a,b)=>a.dist-b.dist);return cands[0];
+}
+
+function selectWall(model,clickLocal){
+  const{ctr,edges}=model,rdx=clickLocal[0]-ctr[0],rdy=clickLocal[1]-ctr[1];
+  let bestEdge=null,bestT=Infinity;
+  if(Math.sqrt(rdx*rdx+rdy*rdy)>0.001){
+    for(const edge of edges){
+      const ex=edge.b[0]-edge.a[0],ey=edge.b[1]-edge.a[1],denom=rdx*ey-rdy*ex;
+      if(Math.abs(denom)<1e-12)continue;
+      const dx=edge.a[0]-ctr[0],dy=edge.a[1]-ctr[1];
+      const t=(dx*ey-dy*ex)/denom,s=(dx*rdy-dy*rdx)/denom;
+      if(t>0&&s>=0&&s<=1&&t<bestT){bestT=t;bestEdge=edge;}
+    }
+  }
+  if(!bestEdge){let minD=Infinity;for(const e of edges){const d=pointToSegmentDist(clickLocal[0],clickLocal[1],e.a[0],e.a[1],e.b[0],e.b[1]);if(d<minD){minD=d;bestEdge=e;}}}
+  if(!bestEdge)return null;
+  return{...bestEdge,numCells:Math.max(Math.floor(bestEdge.length/BAY_WIDTH),1)};
+}
+
+function snapToGrid(wall,clickLocal){
+  const{a,b,numCells}=wall;
+  const proj=projectOnSegment(clickLocal[0],clickLocal[1],a[0],a[1],b[0],b[1]);
+  const col=Math.max(0,Math.min(numCells-1,Math.round(proj.t*numCells-0.5)));
+  const t=(col+0.5)/numCells;
+  return{col,row:0,t,pos:[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]};
+}
+
+function computeBayPosition(wall,gridSnap,model,row){
+  const{normal}=wall,alt=row*BAY_HEIGHT;
+  let standoff=_hd+0.1,center=null;
+  for(let iter=0;iter<PUSHOUT_MAX_ITER;iter++){
+    const cx=gridSnap.pos[0]+normal[0]*standoff,cy=gridSnap.pos[1]+normal[1]*standoff;
+    center=[cx,cy];
+    const eDir=normalize2D([wall.b[0]-wall.a[0],wall.b[1]-wall.a[1]]);
+    const corners=[[cx+eDir[0]*_hw+normal[0]*_hd,cy+eDir[1]*_hw+normal[1]*_hd],[cx-eDir[0]*_hw+normal[0]*_hd,cy-eDir[1]*_hw+normal[1]*_hd],[cx-eDir[0]*_hw-normal[0]*_hd,cy-eDir[1]*_hw-normal[1]*_hd],[cx+eDir[0]*_hw-normal[0]*_hd,cy+eDir[1]*_hw-normal[1]*_hd]];
+    if(!corners.some(c=>pointInPolygonRC(c[0],c[1],model.localPts))){
+      const hRad=Math.atan2(-normal[0],normal[1]);
+      return{center,corners,altitude:alt,heading:hRad*RAD2DEG,standoff};
+    }
+    standoff+=0.25;
+  }
+  const eDir=normalize2D([wall.b[0]-wall.a[0],wall.b[1]-wall.a[1]]);
+  const[cx,cy]=center;
+  const corners=[[cx+eDir[0]*_hw+normal[0]*_hd,cy+eDir[1]*_hw+normal[1]*_hd],[cx-eDir[0]*_hw+normal[0]*_hd,cy-eDir[1]*_hw+normal[1]*_hd],[cx-eDir[0]*_hw-normal[0]*_hd,cy-eDir[1]*_hw-normal[1]*_hd],[cx+eDir[0]*_hw-normal[0]*_hd,cy+eDir[1]*_hw-normal[1]*_hd]];
+  return{center,corners,altitude:alt,heading:Math.atan2(-normal[0],normal[1])*RAD2DEG,standoff};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PLACEMENT STATE
+// ═══════════════════════════════════════════════════════════════════
+function wallId(bid,eidx)        {return`${bid}_${eidx}`;}
+function buildingIdFromWallId(wId){const l=wId.lastIndexOf('_');return l>=0?wId.substring(0,l):wId;}
+function isOccupied(wId,col,row) {const s=placements.get(wId);return s?s.has(`${col},${row}`):false;}
+function placeScaffold(wId,col,row)  {if(!placements.has(wId))placements.set(wId,new Set());placements.get(wId).add(`${col},${row}`);}
+function removeScaffold(wId,col,row) {const s=placements.get(wId);if(s){s.delete(`${col},${row}`);if(!s.size)placements.delete(wId);}}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAP
+// ═══════════════════════════════════════════════════════════════════
+const map = new maplibregl.Map({
+  container:'map',
+  style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#080E1C'}}],glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'},
+  center:IS_DEMO?[_OLNG,_OLAT]:[-0.1276,51.5074],zoom:17,pitch:55,bearing:-10,antialias:true,maxPitch:70
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:true,showZoom:true}),'bottom-right');
+map.addControl(new maplibregl.ScaleControl({maxWidth:150,unit:'metric'}),'bottom-left');
+
+// ── Base map loader ──────────────────────────────────────────────
+let basemapActive = false;
+async function loadBasemap() {
+  try {
+    const cfg = await fetch(`${API_BASE}/api/config`).then(r => r.json());
+    if (!cfg.os_basemap) return;
+    map.addSource('os-basemap', {
+      type: 'raster',
+      tiles: [`${API_BASE}/api/os-tiles/Light_3857/{z}/{x}/{y}.png`],
+      tileSize: 256,
+      attribution: '&copy; Ordnance Survey',
+      maxzoom: 20
+    });
+    map.addLayer({
+      id: 'os-basemap-layer',
+      type: 'raster',
+      source: 'os-basemap',
+      paint: { 'raster-opacity': 0.45 }
+    }, map.getStyle().layers[0]?.id);
+    basemapActive = true;
+    updateBasemapToggle();
+  } catch (e) { console.warn('Basemap load failed:', e.message); }
+}
+function updateBasemapToggle() {
+  const btn = document.getElementById('basemap-toggle');
+  if (btn) btn.textContent = basemapActive ? 'Hide Map' : 'Show Map';
+}
+function toggleBasemap() {
+  if (!map.getLayer('os-basemap-layer')) return;
+  basemapActive = !basemapActive;
+  map.setLayoutProperty('os-basemap-layer', 'visibility', basemapActive ? 'visible' : 'none');
+  updateBasemapToggle();
+}
+function setBasemapOpacity(val) {
+  if (map.getLayer('os-basemap-layer')) {
+    map.setPaintProperty('os-basemap-layer', 'raster-opacity', parseFloat(val));
+  }
+}
+function switchBasemapLayer(layer) {
+  if (!map.getSource('os-basemap')) return;
+  const opacity = map.getLayer('os-basemap-layer')
+    ? map.getPaintProperty('os-basemap-layer', 'raster-opacity') : 0.45;
+  if (map.getLayer('os-basemap-layer')) map.removeLayer('os-basemap-layer');
+  if (map.getSource('os-basemap')) map.removeSource('os-basemap');
+  map.addSource('os-basemap', {
+    type: 'raster',
+    tiles: [`${API_BASE}/api/os-tiles/${layer}/{z}/{x}/{y}.png`],
+    tileSize: 256,
+    attribution: '&copy; Ordnance Survey',
+    maxzoom: 20
+  });
+  map.addLayer({
+    id: 'os-basemap-layer',
+    type: 'raster',
+    source: 'os-basemap',
+    paint: { 'raster-opacity': opacity }
+  }, map.getStyle().layers.find(l => l.id !== 'background')?.id);
+  basemapActive = true;
+  updateBasemapToggle();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILDING GEOMETRY PROCESSING
+// ═══════════════════════════════════════════════════════════════════
+function processBuildings(){
+  const gP=[],rP=[],vL=[],nd=[],pg=[];
+  for(const[,f]of allBuildings){
+    const h=f.properties.height||10,g=f.geometry;
+    if(g.type==='Polygon')processRings(g.coordinates,h,gP,rP,vL,nd,pg);
+    else if(g.type==='MultiPolygon')for(const p of g.coordinates)processRings(p,h,gP,rP,vL,nd,pg);
+  }
+  geoData={groundPaths:gP,roofPaths:rP,verticalLines:vL,nodes:nd,polygons:pg};
+}
+function processRings(rings,height,gP,rP,vL,nd,pg){
+  const outer=rings[0];if(!outer||outer.length<4)return;
+  const gPath=[],rPath=[];
+  for(const c of outer){gPath.push([c[0],c[1],0]);rPath.push([c[0],c[1],height]);}
+  gP.push(gPath);rP.push(rPath);pg.push({contour:outer.map(c=>[c[0],c[1]]),height});
+  const cnt=(outer[0][0]===outer[outer.length-1][0]&&outer[0][1]===outer[outer.length-1][1])?outer.length-1:outer.length;
+  for(let i=0;i<cnt;i++){const[lng,lat]=outer[i];vL.push({src:[lng,lat,0],tgt:[lng,lat,height]});nd.push([lng,lat,0]);nd.push([lng,lat,height]);}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// THREE.JS SCAFFOLD GEOMETRY
+// ═══════════════════════════════════════════════════════════════════
+const _geo={},_mat={};
+
+function initThreeAssets(){
+  if(_geo.pole)return;
+  _geo.pole    =new THREE.CylinderGeometry(POLE_RADIUS,POLE_RADIUS,BAY_HEIGHT,10);
+  _geo.fb      =new THREE.BoxGeometry(BAY_WIDTH,LEDGER_CS,LEDGER_CS);
+  _geo.side    =new THREE.BoxGeometry(LEDGER_CS,LEDGER_CS,BAY_DEPTH);
+  _geo.coupler =new THREE.CylinderGeometry(POLE_RADIUS*1.6,POLE_RADIUS*1.6,LEDGER_CS*1.5,8);
+  _geo.deck    =new THREE.BoxGeometry(BAY_WIDTH,PLANK_THICKNESS,BAY_DEPTH);
+  _geo.toe     =new THREE.BoxGeometry(BAY_WIDTH,0.15,0.025);
+  const tmp    =new THREE.BoxGeometry(BAY_WIDTH,BAY_HEIGHT,BAY_DEPTH);
+  _geo.bboxEdges=new THREE.EdgesGeometry(tmp);tmp.dispose();
+  // DoubleSide is required because the -s Y-scale in positionGroup flips
+  // triangle winding, which would cull every front face with the default FrontSide.
+  _mat.steel    =new THREE.MeshLambertMaterial({color:0x8CA8BC,side:THREE.DoubleSide});
+  _mat.darkSteel=new THREE.MeshLambertMaterial({color:0x5C6B7A,side:THREE.DoubleSide});
+  _mat.timber   =new THREE.MeshLambertMaterial({color:0xC4A262,side:THREE.DoubleSide});
+  _mat.yellow   =new THREE.MeshLambertMaterial({color:0xF5C542,side:THREE.DoubleSide});
+  _mat.xbrace   =new THREE.LineBasicMaterial({color:0x4A5A6A});
+  _mat.board    =new THREE.LineBasicMaterial({color:0x8B7355});
+  _mat.glow     =new THREE.LineBasicMaterial({color:0x0ea5e9,transparent:true,opacity:0.3});
+}
+
+function createScaffoldBay(){
+  initThreeAssets();
+  const g=new THREE.Group();
+  const corners=[[-_hw,-_hd],[+_hw,-_hd],[+_hw,+_hd],[-_hw,+_hd]];
+  for(const[px,pz]of corners){const m=new THREE.Mesh(_geo.pole,_mat.steel);m.position.set(px,BAY_HEIGHT/2,pz);g.add(m);}
+  for(const pz of[-_hd,+_hd])for(const py of[0,BAY_HEIGHT/2,BAY_HEIGHT]){const m=new THREE.Mesh(_geo.fb,_mat.steel);m.position.set(0,py,pz);g.add(m);}
+  for(const px of[-_hw,+_hw])for(const py of[0,BAY_HEIGHT]){const m=new THREE.Mesh(_geo.side,_mat.steel);m.position.set(px,py,0);g.add(m);}
+  for(const[px,pz]of corners)for(const py of[0,BAY_HEIGHT/2,BAY_HEIGHT]){const m=new THREE.Mesh(_geo.coupler,_mat.darkSteel);m.position.set(px,py,pz);m.rotation.z=Math.PI/2;g.add(m);}
+  const xb=z=>{g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-_hw,0,z),new THREE.Vector3(+_hw,BAY_HEIGHT,z)]),_mat.xbrace));g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(+_hw,0,z),new THREE.Vector3(-_hw,BAY_HEIGHT,z)]),_mat.xbrace));};
+  xb(-_hd);xb(+_hd);
+  const deck=new THREE.Mesh(_geo.deck,_mat.timber);deck.position.set(0,BAY_HEIGHT-PLANK_THICKNESS/2,0);g.add(deck);
+  for(let i=0;i<5;i++){const bz=-_hd+(i+.5)*(BAY_DEPTH/5);g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-_hw,BAY_HEIGHT,bz),new THREE.Vector3(+_hw,BAY_HEIGHT,bz)]),_mat.board));}
+  const toe=new THREE.Mesh(_geo.toe,_mat.yellow);toe.position.set(0,BAY_HEIGHT+.075,-_hd);g.add(toe);
+  const glow=new THREE.LineSegments(_geo.bboxEdges,_mat.glow);glow.position.set(0,BAY_HEIGHT/2,0);g.add(glow);
+  return g;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// COORDINATE TRANSFORM  (local metres → Mercator)
+// ═══════════════════════════════════════════════════════════════════
+function positionGroup(group,lng,lat,altMetres,headingDeg){
+  const mc=maplibregl.MercatorCoordinate.fromLngLat([lng,lat],altMetres);
+  const s=mc.meterInMercatorCoordinateUnits();
+  // Lazily initialise the scene origin to the first scaffold placed.
+  // All subsequent positions are stored relative to this origin so that
+  // vertex coordinates remain small enough for Float32 GPU precision.
+  if(!sceneOriginMc) sceneOriginMc={x:mc.x,y:mc.y,z:mc.z};
+  // Position relative to scene origin (small values → no Float32 precision loss)
+  group.position.set(mc.x-sceneOriginMc.x,mc.y-sceneOriginMc.y,mc.z-sceneOriginMc.z);
+  group.scale.set(s,s,s);
+  group.rotation.set(Math.PI/2,-headingDeg*DEG2RAD,0,'XYZ');
+  group.matrixAutoUpdate=true;
+  group.updateMatrixWorld(true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RAYCASTING
+// ═══════════════════════════════════════════════════════════════════
+function raycastScaffolds(e){
+  if(!lastMatrix||!layerReady||!scaffoldBays.size)return null;
+  const canvas=map.getCanvas();
+  const ndcX=(e.point.x/canvas.clientWidth)*2-1;
+  const ndcY=-(e.point.y/canvas.clientHeight)*2+1;
+  // Build the same modified matrix used for rendering (VP * T_origin)
+  // so the unprojected ray lands in the scene's relative coordinate space.
+  const M=new THREE.Matrix4().fromArray(lastMatrix);
+  if(sceneOriginMc){const t=new THREE.Matrix4().makeTranslation(sceneOriginMc.x,sceneOriginMc.y,sceneOriginMc.z);M.multiply(t);}
+  const Minv=M.invert();
+  const n4=new THREE.Vector4(ndcX,ndcY,-1,1).applyMatrix4(Minv);n4.divideScalar(n4.w);
+  const f4=new THREE.Vector4(ndcX,ndcY,1,1).applyMatrix4(Minv);f4.divideScalar(f4.w);
+  const origin=new THREE.Vector3(n4.x,n4.y,n4.z);
+  const direction=new THREE.Vector3(f4.x-n4.x,f4.y-n4.y,f4.z-n4.z).normalize();
+  const raycaster=new THREE.Raycaster();
+  raycaster.ray.origin.copy(origin);raycaster.ray.direction.copy(direction);
+  raycaster.near=0;raycaster.far=Infinity;
+  const groups=[...scaffoldBays.values()].map(d=>d.group);
+  const hits=raycaster.intersectObjects(groups,true);
+  if(!hits.length)return null;
+  let obj=hits[0].object;
+  while(obj&&!obj.userData.bayId)obj=obj.parent;
+  if(!obj)return null;
+  const data=scaffoldBays.get(obj.userData.bayId);
+  return data?{bayId:obj.userData.bayId,...data}:null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCAFFOLD SCENE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════
+function addScaffoldToScene(lng,lat,alt,headingDeg,wId,col,row,buildingId){
+  if(!layerReady)return null;
+  const group=createScaffoldBay();
+  const bayId=`bay_${++bayIdCounter}`;
+  group.userData.bayId=bayId;
+  positionGroup(group,lng,lat,alt,headingDeg);
+  threeScene.add(group);
+  scaffoldBays.set(bayId,{group,lng,lat,alt,headingDeg,wId,col,row,buildingId:buildingId||buildingIdFromWallId(wId)});
+  placedOrder.push(bayId);
+  map.triggerRepaint();
+  updateDebug();
+  updatePricing();
+  updateHeightLabels();
+  return bayId;
+}
+
+function removeScaffoldFromScene(bayId){
+  const data=scaffoldBays.get(bayId);if(!data)return;
+  threeScene.remove(data.group);disposeBayGroup(data.group);scaffoldBays.delete(bayId);
+  const idx=placedOrder.indexOf(bayId);if(idx>=0)placedOrder.splice(idx,1);
+  map.triggerRepaint();updateDebug();updatePricing();updateHeightLabels();
+}
+
+function disposeBayGroup(group){
+  const shared=new Set(Object.values(_geo));
+  group.traverse(obj=>{if(obj.geometry&&!shared.has(obj.geometry))obj.geometry.dispose();});
+}
+
+function findScaffoldByWallCol(wId,col,row){
+  for(const[bayId,d]of scaffoldBays)if(d.wId===wId&&d.col===col&&d.row===row)return bayId;
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// THREE.JS CUSTOM LAYER
+// ═══════════════════════════════════════════════════════════════════
+const scaffoldLayer={
+  id:'scaffold-3d',type:'custom',renderingMode:'3d',
+  onAdd(map,gl){
+    threeRenderer=new THREE.WebGLRenderer({canvas:map.getCanvas(),context:gl,antialias:true});
+    threeRenderer.autoClear=false;threeRenderer.shadowMap.enabled=false;
+    threeScene=new THREE.Scene();threeCamera=new THREE.Camera();
+    threeScene.add(new THREE.AmbientLight(0xffffff,0.65));
+    const dir=new THREE.DirectionalLight(0xffffff,0.85);dir.position.set(0.5,1,.5).normalize();threeScene.add(dir);
+    // Prime the renderer viewport with the real drawing-buffer size so the
+    // first render frame uses the correct dimensions.
+    threeRenderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
+    layerReady=true;
+  },
+  render(gl,matrix){
+    if(!layerReady)return;
+    lastMatrix=matrix;
+    const m=new THREE.Matrix4().fromArray(matrix);
+    // Fold the scene-origin translation into the projection matrix using
+    // Float64 CPU math so that the GPU never sees large absolute positions.
+    if(sceneOriginMc){
+      const t=new THREE.Matrix4().makeTranslation(sceneOriginMc.x,sceneOriginMc.y,sceneOriginMc.z);
+      m.multiply(t);  // m = VP * T_origin  (Float64 on CPU)
+    }
+    threeCamera.projectionMatrix=m;threeCamera.projectionMatrixInverse.copy(m).invert();
+    const dw=gl.drawingBufferWidth,dh=gl.drawingBufferHeight;
+    threeRenderer.resetState();
+    // Force Three.js to render at the actual drawing-buffer size every frame.
+    // resetState() clears the cached viewport, so without this call Three.js
+    // re-applies its stale onAdd() dimensions, causing stretch/distortion on zoom.
+    threeRenderer.setViewport(0,0,dw,dh);
+    threeRenderer.render(threeScene,threeCamera);
+    // Restore GL state so MapLibre's subsequent passes are not corrupted.
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.viewport(0,0,dw,dh);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// DECK.GL BUILDING OVERLAY
+// ═══════════════════════════════════════════════════════════════════
+const deckOverlay=new deck.MapboxOverlay({interleaved:false,layers:[]});
+map.addControl(deckOverlay);
+
+function updateDeckLayers(){
+  const{groundPaths,roofPaths,verticalLines,nodes,polygons}=geoData;
+  const gLines=gridVisible?gridLines:[];
+  const gCells=gridVisible?gridCells:[];
+  const snap  =gridVisible?snapMarker:[];
+  deckOverlay.setProps({layers:[
+    new deck.PolygonLayer({id:'building-fill',data:polygons,getPolygon:d=>d.contour,extruded:true,getElevation:d=>d.height,getFillColor:[14,165,233,13],material:false,stroked:false,pickable:false}),
+    new deck.PathLayer({id:'ground-glow-1',data:groundPaths,getPath:d=>d,getWidth:8,widthUnits:'pixels',getColor:[14,165,233,38],jointRounded:true,capRounded:true,pickable:false}),
+    new deck.PathLayer({id:'ground-glow-2',data:groundPaths,getPath:d=>d,getWidth:3,widthUnits:'pixels',getColor:[34,211,238,128],jointRounded:true,capRounded:true,pickable:false}),
+    new deck.PathLayer({id:'ground-glow-3',data:groundPaths,getPath:d=>d,getWidth:1.2,widthUnits:'pixels',getColor:[103,232,249,242],jointRounded:true,capRounded:true,pickable:false}),
+    new deck.PathLayer({id:'roof-outline',data:roofPaths,getPath:d=>d,getWidth:1.8,widthUnits:'pixels',getColor:[180,245,255,210],jointRounded:true,capRounded:true,pickable:false}),
+    new deck.LineLayer({id:'vertical-edges',data:verticalLines,getSourcePosition:d=>d.src,getTargetPosition:d=>d.tgt,getWidth:1,widthUnits:'pixels',getColor:[14,165,233,153],pickable:false}),
+    new deck.ScatterplotLayer({id:'vertex-nodes',data:nodes,getPosition:d=>d,radiusUnits:'pixels',getRadius:2.2,getFillColor:[34,211,238,230],getLineColor:[255,255,255,180],stroked:true,lineWidthMinPixels:.8,antialiasing:true,pickable:false}),
+    new deck.PathLayer({id:'selected-outline',data:selectedBuildingOutline,getPath:d=>d.path,getWidth:3,widthUnits:'pixels',getColor:d=>d.color,jointRounded:true,capRounded:true,pickable:false}),
+    new deck.PathLayer({id:'wall-highlight',data:highlightWallLine,getPath:d=>d.path,getWidth:4,widthUnits:'pixels',getColor:[251,191,36,180],jointRounded:true,capRounded:true,pickable:false}),
+    new deck.PathLayer({id:'grid-lines',data:gLines,getPath:d=>d.path,getWidth:1,widthUnits:'pixels',getColor:[100,116,139,120],pickable:false}),
+    new deck.PolygonLayer({id:'grid-cells',data:gCells,getPolygon:d=>d.contour,getFillColor:d=>d.color,extruded:false,material:false,stroked:false,pickable:false}),
+    new deck.PolygonLayer({id:'snap-preview',data:snap,getPolygon:d=>d.contour,extruded:true,getElevation:d=>d.height,getFillColor:d=>d.color,material:false,stroked:false,pickable:false}),
+  ]});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GRID OVERLAY GEOMETRY
+// ═══════════════════════════════════════════════════════════════════
+function buildGridOverlay(){
+  gridLines=[];gridCells=[];highlightWallLine=[];
+  const wall=hoveredWall||selectedWall,bldg=selectedBuilding;
+  if(!wall||!bldg)return;
+  const ref=bldg.model.ref,{a,b,normal,numCells,idx:edgeIdx}=wall;
+  const wId=wallId(bldg.id,edgeIdx);
+  const ga=toGlobal(a[0],a[1],ref),gb=toGlobal(b[0],b[1],ref),bH=bldg.feature.properties.height||10;
+  highlightWallLine=[{path:[[ga[0],ga[1],0],[gb[0],gb[1],0],[gb[0],gb[1],bH],[ga[0],ga[1],bH],[ga[0],ga[1],0]]}];
+  for(let c=0;c<=numCells;c++){
+    const t=c/numCells,wx=a[0]+(b[0]-a[0])*t,wy=a[1]+(b[1]-a[1])*t;
+    const g1=toGlobal(wx,wy,ref),g2=toGlobal(wx+normal[0]*.8,wy+normal[1]*.8,ref);
+    gridLines.push({path:[[g1[0],g1[1],0],[g2[0],g2[1],0]]});
+    gridLines.push({path:[[g1[0],g1[1],0],[g1[0],g1[1],bH]]});
+  }
+  for(let c=0;c<numCells;c++){
+    const t0=c/numCells,t1=(c+1)/numCells;
+    const p0=[a[0]+(b[0]-a[0])*t0,a[1]+(b[1]-a[1])*t0],p1=[a[0]+(b[0]-a[0])*t1,a[1]+(b[1]-a[1])*t1];
+    const off=0.6;
+    const gp0=toGlobal(p0[0],p0[1],ref),gp1=toGlobal(p1[0],p1[1],ref);
+    const gp2=toGlobal(p1[0]+normal[0]*off,p1[1]+normal[1]*off,ref);
+    const gp3=toGlobal(p0[0]+normal[0]*off,p0[1]+normal[1]*off,ref);
+    const occ=isOccupied(wId,c,0),hov=c===hoveredGridCol;
+    gridCells.push({contour:[[gp0[0],gp0[1]],[gp1[0],gp1[1]],[gp2[0],gp2[1]],[gp3[0],gp3[1]]],color:occ?[251,191,36,60]:hov?[34,197,94,50]:[34,211,238,15],height:.05});
+  }
+}
+
+function buildSelectedBuildingOutline(){
+  selectedBuildingOutline=[];
+  if(!selectedBuilding)return;
+  const ring=selectedBuilding.model.ring,h=selectedBuilding.feature.properties.height||10;
+  selectedBuildingOutline=[{path:ring.map(c=>[c[0],c[1],0]),color:[251,191,36,100]},{path:ring.map(c=>[c[0],c[1],h]),color:[251,191,36,80]}];
+}
+
+function buildSnapPreview(){
+  snapMarker=[];
+  if(!selectedBuilding||!selectedWall||hoveredGridCol<0)return;
+  const wId=wallId(selectedBuilding.id,selectedWall.idx);if(isOccupied(wId,hoveredGridCol,0))return;
+  const t=(hoveredGridCol+.5)/selectedWall.numCells;
+  const gs={col:hoveredGridCol,row:0,t,pos:[selectedWall.a[0]+(selectedWall.b[0]-selectedWall.a[0])*t,selectedWall.a[1]+(selectedWall.b[1]-selectedWall.a[1])*t]};
+  const bay=computeBayPosition(selectedWall,gs,selectedBuilding.model,0);
+  const gc=bay.corners.map(c=>toGlobal(c[0],c[1],selectedBuilding.model.ref));
+  snapMarker=[{contour:gc.map(c=>[c[0],c[1]]),color:[34,197,94,70],height:BAY_HEIGHT}];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PRICING SYSTEM
+// ═══════════════════════════════════════════════════════════════════
+
+// Pure function — used by updatePricing() and runTests()
+function calcPrice(units,rate,weeks,inclVat){
+  const hire      = units * rate * weeks;
+  const labour    = units * (RATE_LABOUR_ERECT + RATE_LABOUR_STRIP);
+  const transport = Math.ceil(units / RATE_TRANSPORT_LOAD) * RATE_TRANSPORT_LORRY;
+  const subtotal  = hire + labour + transport;
+  return {units,rate,weeks,hire,labour,transport,subtotal,
+          total:inclVat?subtotal*1.2:subtotal,inclVat};
+}
+
+function computePrice(){
+  const units   = scaffoldBays.size;
+  const rate    = parseFloat(document.getElementById('pr-rate').value)||45;
+  const weeks   = parseInt(document.getElementById('pr-weeks').value)||4;
+  const vat     = document.getElementById('pr-vat').checked;
+
+  const hire      = units * rate * weeks;
+  const labour    = units * (RATE_LABOUR_ERECT + RATE_LABOUR_STRIP);
+  const transport = Math.ceil(units / RATE_TRANSPORT_LOAD) * RATE_TRANSPORT_LORRY;
+  const subtotal  = hire + labour + transport;
+  const total     = vat ? subtotal * 1.2 : subtotal;
+
+  return{units,rate,weeks,hire,labour,transport,subtotal,total,vat};
+}
+
+function fmt(n){return'£'+Math.round(n).toLocaleString('en-GB');}
+
+let _prevUnits = 0;
+function updatePricing(){
+  const p=computePrice();
+
+  // Animate counter if changed
+  const el=document.getElementById('pr-units');
+  if(p.units!==_prevUnits){
+    animateCounter(el,_prevUnits,p.units);
+    _prevUnits=p.units;
+  }
+
+  document.getElementById('pr-hire').textContent      = fmt(p.hire);
+  document.getElementById('pr-labour').textContent    = fmt(p.labour);
+  document.getElementById('pr-transport').textContent = fmt(p.transport);
+  document.getElementById('pr-total').textContent     = fmt(p.total);
+  document.getElementById('pr-vat-label').textContent = p.vat?'Total (inc VAT)':'Total (ex VAT)';
+  document.getElementById('pr-total').className       = 'amount'+(p.vat?' vat':'');
+
+  // Per-building breakdown
+  const byBldg = new Map();
+  for(const[,d]of scaffoldBays){
+    const bid=d.buildingId||'unknown';
+    if(!byBldg.has(bid))byBldg.set(bid,{count:0,name:'--'});
+    byBldg.get(bid).count++;
+    const f=allBuildings.get(bid);
+    if(f)byBldg.get(bid).name=f.properties.name||f.properties.addr_street||bid.slice(0,12);
+  }
+
+  const div=document.getElementById('bldg-breakdown');
+  const divider=document.getElementById('breakdown-divider');
+  if(byBldg.size){
+    divider.style.display='';
+    div.innerHTML=[...byBldg.entries()].map(([,v])=>
+      `<div class="bldg-item"><span class="bn">${v.name}</span><span class="bc">${v.count} bay${v.count!==1?'s':''}</span></div>`
+    ).join('');
+  } else {
+    divider.style.display='none';
+    div.innerHTML='';
+  }
+}
+
+// Wire up pricing controls
+document.getElementById('pr-rate').addEventListener('input',updatePricing);
+document.getElementById('pr-weeks').addEventListener('change',updatePricing);
+document.getElementById('pr-vat').addEventListener('change',updatePricing);
+
+// Smooth counter animation
+function animateCounter(el,from,to){
+  const dur=350,start=performance.now();
+  el.classList.remove('count-pop');
+  void el.offsetWidth;  // reflow to restart animation
+  el.classList.add('count-pop');
+  function tick(now){
+    const t=Math.min((now-start)/dur,1);
+    const ease=1-Math.pow(1-t,3);
+    el.textContent=Math.round(from+(to-from)*ease);
+    if(t<1)requestAnimationFrame(tick);
+    else el.textContent=to;
+  }
+  requestAnimationFrame(tick);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HEIGHT LABELS
+// ═══════════════════════════════════════════════════════════════════
+function updateHeightLabels(){
+  if(!labelsVisible){clearHeightLabels();return;}
+  const needBids=new Set([...scaffoldBays.values()].map(d=>d.buildingId));
+
+  // Remove stale labels
+  for(const[bid,el]of heightLabels){
+    if(!needBids.has(bid)){el.remove();heightLabels.delete(bid);}
+  }
+
+  for(const bid of needBids){
+    const feature=allBuildings.get(bid);if(!feature)continue;
+    const model=buildSnapModel(feature);if(!model)continue;
+    const[lng,lat]=toGlobal(model.ctr[0],model.ctr[1],model.ref);
+    const pt=map.project([lng,lat]);
+    const h=feature.properties.height||10;
+
+    let el=heightLabels.get(bid);
+    if(!el){
+      el=document.createElement('div');
+      el.className='height-label';
+      document.getElementById('map').appendChild(el);
+      heightLabels.set(bid,el);
+    }
+    el.textContent=`${h}m`;
+    el.style.left=`${pt.x}px`;
+    el.style.top=`${pt.y}px`;
+  }
+}
+
+function clearHeightLabels(){
+  for(const[,el]of heightLabels)el.remove();
+  heightLabels.clear();
+}
+
+map.on('move',updateHeightLabels);
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORT — PDF QUOTE
+// ═══════════════════════════════════════════════════════════════════
+function downloadPDF(){
+  if(!window.jspdf){setStatus('error','jsPDF not loaded');return;}
+  const{jsPDF}=window.jspdf;
+  const p=computePrice();
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+
+  // ── Header bar
+  doc.setFillColor(8,14,28);
+  doc.rect(0,0,210,38,'F');
+  doc.setTextColor(34,211,238);
+  doc.setFontSize(22);doc.setFont('helvetica','bold');
+  doc.text('RigIt.ai',14,16);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');
+  doc.setTextColor(148,163,184);
+  doc.text('Scaffold Hire — Indicative Quote',14,24);
+  doc.setTextColor(100,116,139);
+  doc.text(`Generated: ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}`,14,31);
+
+  // ── Site info
+  doc.setTextColor(30,30,30);
+  doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Site Details',14,48);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  doc.text(`Address: ${currentAddress||'Not specified'}`,14,55);
+  doc.text(`Hire duration: ${p.weeks} week${p.weeks!==1?'s':''}`,14,61);
+
+  // ── Summary table
+  doc.setFontSize(11);doc.setFont('helvetica','bold');
+  doc.text('Cost Breakdown',14,74);
+
+  const rows=[
+    ['Bays deployed',`${p.units} units`,''],
+    ['Weekly hire rate',`£${p.rate} / unit / week`,''],
+    ['Weekly hire total',`${p.units} × £${p.rate} × ${p.weeks} wks`,fmt(p.hire)],
+    ['Labour (erect + strip)',`${p.units} × £${RATE_LABOUR_ERECT+RATE_LABOUR_STRIP}`,fmt(p.labour)],
+    ['Transport',`${Math.ceil(p.units/RATE_TRANSPORT_LOAD)} lorry trip${Math.ceil(p.units/RATE_TRANSPORT_LOAD)!==1?'s':''}`,fmt(p.transport)],
+  ];
+
+  let y=80;
+  doc.setFillColor(240,248,255);doc.rect(14,y,182,7,'F');
+  doc.setTextColor(14,165,233);doc.setFont('helvetica','bold');doc.setFontSize(9);
+  doc.text('Item',16,y+5);doc.text('Detail',80,y+5);doc.text('Amount',168,y+5,'right');
+  y+=9;
+
+  doc.setFont('helvetica','normal');doc.setTextColor(40,40,40);
+  for(const[item,detail,amount]of rows){
+    if(y>270){doc.addPage();y=20;}
+    if(rows.indexOf([item,detail,amount])%2===0){doc.setFillColor(250,250,250);doc.rect(14,y-1,182,7,'F');}
+    doc.text(item,16,y+4);
+    doc.text(detail,80,y+4);
+    if(amount){doc.setFont('helvetica','bold');doc.text(amount,168,y+4,'right');doc.setFont('helvetica','normal');}
+    y+=8;
+  }
+
+  // Subtotal line
+  y+=2;
+  doc.setDrawColor(200,200,200);doc.line(14,y,196,y);y+=6;
+  doc.setFont('helvetica','bold');doc.setFontSize(11);
+  doc.text('Subtotal (ex VAT)',14,y);doc.text(fmt(p.subtotal),168,y,'right');
+  if(p.vat){
+    y+=7;doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(100,100,100);
+    doc.text('VAT @ 20%',14,y);doc.text(fmt(p.subtotal*0.2),168,y,'right');
+    y+=7;
+    doc.setFillColor(14,165,233);doc.rect(14,y-4,182,10,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);
+    doc.text('Total (inc VAT)',16,y+3);doc.text(fmt(p.total),168,y+3,'right');
+  } else {
+    y+=6;
+    doc.setFillColor(14,165,233);doc.rect(14,y-4,182,10,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);
+    doc.text('Total (ex VAT)',16,y+3);doc.text(fmt(p.total),168,y+3,'right');
+  }
+
+  // Per-building breakdown
+  const byBldg=new Map();
+  for(const[,d]of scaffoldBays){
+    const bid=d.buildingId||'unknown';
+    if(!byBldg.has(bid))byBldg.set(bid,{count:0,name:'--'});
+    byBldg.get(bid).count++;
+    const f=allBuildings.get(bid);
+    if(f)byBldg.get(bid).name=f.properties.name||f.properties.addr_street||bid.slice(0,20);
+  }
+  if(byBldg.size){
+    y+=16;
+    doc.setTextColor(30,30,30);doc.setFont('helvetica','bold');doc.setFontSize(11);
+    doc.text('Per-Building Summary',14,y);y+=6;
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(80,80,80);
+    for(const[,v]of byBldg){
+      doc.text(`• ${v.name}`,18,y);doc.text(`${v.count} bay${v.count!==1?'s':''}`,120,y);y+=6;
+    }
+  }
+
+  // Footer
+  const footerY=285;
+  doc.setDrawColor(200,200,200);doc.line(14,footerY-4,196,footerY-4);
+  doc.setFontSize(8);doc.setTextColor(130,130,130);doc.setFont('helvetica','italic');
+  doc.text('Estimate only. Subject to site survey. All prices exclude delivery unless stated. E&OE.',14,footerY);
+  doc.text('RigIt.ai · rigit.ai',196,footerY,'right');
+
+  doc.save(`RigIt_Quote_${new Date().toISOString().slice(0,10)}.pdf`);
+  setStatus('snap','PDF downloaded');setTimeout(()=>setStatus('ready',''),2500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORT — COPY LINK
+// ═══════════════════════════════════════════════════════════════════
+function serializeState(){
+  const c=map.getCenter();
+  const state={
+    c:[+c.lng.toFixed(6),+c.lat.toFixed(6)],
+    z:+map.getZoom().toFixed(2),
+    p:+map.getPitch().toFixed(1),
+    b:+map.getBearing().toFixed(1),
+    s:[...scaffoldBays.values()].map(d=>({
+      g:[+d.lng.toFixed(6),+d.lat.toFixed(6)],
+      a:+d.alt.toFixed(2),
+      h:+d.headingDeg.toFixed(2),
+      w:d.wId,
+      c:d.col,
+      r:d.row,
+      bid:d.buildingId
+    }))
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+}
+
+function copyLink(){
+  const hash=serializeState();
+  const url=`${location.origin}${location.pathname}#${hash}`;
+  navigator.clipboard.writeText(url).then(()=>{
+    const btn=document.getElementById('btn-copy');
+    btn.classList.add('copied');btn.querySelector('span:last-child').textContent='Copied!';
+    setTimeout(()=>{btn.classList.remove('copied');btn.querySelector('span:last-child').textContent='Copy Link';},2000);
+  });
+}
+
+function restoreFromHash(){
+  const hash=location.hash.slice(1);if(!hash)return;
+  try{
+    const state=JSON.parse(decodeURIComponent(escape(atob(hash))));
+    if(state.c)map.setCenter(state.c);
+    if(state.z!=null)map.setZoom(state.z);
+    if(state.p!=null)map.setPitch(state.p);
+    if(state.b!=null)map.setBearing(state.b);
+    if(state.s&&state.s.length){
+      // Queue scaffold restore; bays need the Three.js layer ready
+      window._pendingRestore=state.s;
+    }
+  }catch(e){console.warn('Could not restore state:',e);}
+}
+
+async function restorePendingScaffolds(){
+  const pending=window._pendingRestore;if(!pending||!pending.length)return;
+  window._pendingRestore=null;
+  for(const d of pending){
+    placeScaffold(d.w,d.c,d.r);
+    addScaffoldToScene(d.g[0],d.g[1],d.a,d.h,d.w,d.c,d.r,d.bid);
+    await new Promise(r=>setTimeout(r,0));  // yield so UI stays responsive
+  }
+  setStatus('snap',`Restored ${pending.length} scaffold bay${pending.length!==1?'s':''}`);
+  setTimeout(()=>setStatus('ready',''),2500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORT — SCREENSHOT
+// ═══════════════════════════════════════════════════════════════════
+function takeScreenshot(){
+  // MapLibre preserveDrawingBuffer must be true; ours is OK since we share the context
+  map.once('render',()=>{
+    try{
+      const canvas=map.getCanvas();
+      const url=canvas.toDataURL('image/png');
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=`RigIt_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.png`;
+      a.click();
+      setStatus('snap','Screenshot saved');setTimeout(()=>setStatus('ready',''),2500);
+    }catch(e){
+      setStatus('error','Screenshot failed — try Firefox or disable extensions');
+      setTimeout(()=>setStatus('ready',''),3000);
+    }
+  });
+  map.triggerRepaint();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  // Ignore when typing in inputs
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
+
+  switch(e.key){
+    case 'Escape':
+      clearSelection();break;
+
+    case 'r': case 'R':
+      // Rotate camera 90° clockwise
+      map.easeTo({bearing:(map.getBearing()+90)%360,duration:600});
+      break;
+
+    case 'Delete': case 'Backspace':
+      // Remove last placed scaffold bay
+      if(placedOrder.length){
+        const bayId=placedOrder[placedOrder.length-1];
+        const d=scaffoldBays.get(bayId);
+        if(d){removeScaffold(d.wId,d.col,d.row);removeScaffoldFromScene(bayId);setStatus('snap','Removed last bay');setTimeout(()=>setStatus('ready',''),2000);}
+      }
+      break;
+
+    case 'g': case 'G':
+      gridVisible=!gridVisible;
+      updateDeckLayers();
+      setStatus('snap',`Grid ${gridVisible?'on':'off'}`);setTimeout(()=>setStatus('ready',''),1500);
+      break;
+
+    case 'h': case 'H':
+      labelsVisible=!labelsVisible;
+      updateHeightLabels();
+      setStatus('snap',`Height labels ${labelsVisible?'on':'off'}`);setTimeout(()=>setStatus('ready',''),1500);
+      break;
+
+    case 't': case 'T':
+      if(typeof window.runTests==='function') window.runTests();
+      break;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CLICK HANDLER
+// ═══════════════════════════════════════════════════════════════════
+map.on('click',e=>{
+  const isShift=e.originalEvent.shiftKey;
+
+  // Priority 1: scaffold hit?
+  const hit=raycastScaffolds(e);
+  if(hit){
+    if(isShift){
+      removeScaffold(hit.wId,hit.col,hit.row);removeScaffoldFromScene(hit.bayId);
+      setStatus('snap','Removed scaffold bay');
+    } else {
+      const newRow=hit.row+1,newAlt=newRow*BAY_HEIGHT;
+      if(!isOccupied(hit.wId,hit.col,newRow)){
+        placeScaffold(hit.wId,hit.col,newRow);
+        addScaffoldToScene(hit.lng,hit.lat,newAlt,hit.headingDeg,hit.wId,hit.col,newRow,hit.buildingId);
+        setStatus('snap',`Stacked — row ${newRow}`);
+      } else { setStatus('error','Cell already occupied'); }
+    }
+    setTimeout(()=>setStatus('ready',''),2500);
+    updateAllOverlays();updateSnapPanel();return;
+  }
+
+  // Priority 2: building snap
+  const result=findBuilding(e.lngLat.lng,e.lngLat.lat);
+  if(!result){clearSelection();setStatus('snap','No building found');setTimeout(()=>setStatus('ready',''),2000);return;}
+
+  const{id,feature,model,clickLocal}=result;
+  selectedBuilding={id,feature,model};buildSelectedBuildingOutline();
+
+  const wall=selectWall(model,clickLocal);
+  if(!wall){setStatus('error','Could not determine wall');updateAllOverlays();return;}
+  selectedWall=wall;
+
+  const gs=snapToGrid(wall,clickLocal);
+  const wId=wallId(id,wall.idx);
+
+  if(isShift){
+    if(isOccupied(wId,gs.col,0)){
+      const bId=findScaffoldByWallCol(wId,gs.col,0);
+      if(bId)removeScaffoldFromScene(bId);
+      removeScaffold(wId,gs.col,0);
+      setStatus('snap',`Removed bay col ${gs.col}`);
+    } else { setStatus('snap','No bay here'); }
+  } else {
+    if(isOccupied(wId,gs.col,0)){
+      setStatus('error','Cell already occupied');
+    } else {
+      const bay=computeBayPosition(wall,gs,model,0);
+      const gc=toGlobal(bay.center[0],bay.center[1],model.ref);
+      placeScaffold(wId,gs.col,0);
+      addScaffoldToScene(gc[0],gc[1],bay.altitude,bay.heading,wId,gs.col,0,id);
+      setStatus('snap',`Placed bay col ${gs.col}`);
+    }
+  }
+  setTimeout(()=>setStatus('ready',''),2500);
+  updateAllOverlays();updateSnapPanel();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MOUSEMOVE
+// ═══════════════════════════════════════════════════════════════════
+let hoverTimer=null;
+map.on('mousemove',e=>{
+  if(!selectedBuilding||!selectedWall)return;
+  clearTimeout(hoverTimer);
+  hoverTimer=setTimeout(()=>{
+    const cl=toLocal(e.lngLat.lng,e.lngLat.lat,selectedBuilding.model.ref);
+    const gs=snapToGrid(selectedWall,cl);
+    hoveredGridCol=gs.col;
+    buildGridOverlay();buildSnapPreview();updateDeckLayers();updateSnapPanel(gs);
+  },16);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SELECTION HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function clearSelection(){
+  selectedBuilding=null;selectedWall=null;hoveredWall=null;hoveredGridCol=-1;
+  gridLines=[];gridCells=[];highlightWallLine=[];selectedBuildingOutline=[];snapMarker=[];
+  document.getElementById('snap-panel').classList.add('hidden');
+  updateDeckLayers();
+}
+
+function updateAllOverlays(){
+  buildSelectedBuildingOutline();buildGridOverlay();buildSnapPreview();updateDeckLayers();
+}
+
+function updateSnapPanel(gs){
+  const panel=document.getElementById('snap-panel');
+  if(!selectedBuilding||!selectedWall){panel.classList.add('hidden');return;}
+  panel.classList.remove('hidden');
+  const name=selectedBuilding.feature.properties.name||selectedBuilding.id;
+  document.getElementById('s-building').textContent=name.length>16?name.slice(0,15)+'\u2026':name;
+  document.getElementById('s-wall').textContent=`Edge ${selectedWall.idx}`;
+  document.getElementById('s-walllen').textContent=selectedWall.length.toFixed(1)+'m';
+  document.getElementById('s-cells').textContent=selectedWall.numCells;
+  document.getElementById('s-placed').textContent=placements.get(wallId(selectedBuilding.id,selectedWall.idx))?.size||0;
+  if(gs)document.getElementById('s-gridpos').textContent=`col:${gs.col} row:${gs.row}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA FETCHING
+// ═══════════════════════════════════════════════════════════════════
+function getViewportRadius(){
+  const b=map.getBounds(),c=map.getCenter(),ne=b.getNorthEast();
+  const dLat=(ne.lat-c.lat)*DEG2RAD,dLng=(ne.lng-c.lng)*DEG2RAD;
+  const a=Math.sin(dLat/2)**2+Math.cos(c.lat*DEG2RAD)*Math.cos(ne.lat*DEG2RAD)*Math.sin(dLng/2)**2;
+  return Math.min(Math.max(R_EARTH*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)),50),5000);
+}
+
+async function fetchBuildings(){
+  if(map.getZoom()<14){setStatus('ready','Zoom in to load buildings');return;}
+  if(isFetching)return;
+  isFetching=true;setStatus('loading','Fetching buildings…');
+  const c=map.getCenter(),r=Math.round(getViewportRadius());
+  try{
+    const res=await fetch(`${API_BASE}/api/buildings?lat=${c.lat.toFixed(6)}&lng=${c.lng.toFixed(6)}&radius=${r}`);
+    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw new Error(e.error||`HTTP ${res.status}`);}
+    const gj=await res.json();let added=0;
+    for(const f of(gj.features||[])){
+      const id=f.properties?.id||`anon_${f.geometry.coordinates[0]?.[0]?.[0]}_${f.geometry.coordinates[0]?.[0]?.[1]}`;
+      if(!allBuildings.has(id)){allBuildings.set(id,f);added++;}
+    }
+    fetchCount++;
+    if(added>0){processBuildings();updateDeckLayers();}
+    updateDebug();setStatus('ready',`${allBuildings.size} buildings loaded`);
+  }catch(err){
+    console.error('Fetch buildings error:',err);
+    const msg=err.message.includes('Failed to fetch')?'Server not reachable — is the backend running on port 3001?':err.message;
+    setStatus('error',msg);
+  }
+  finally{isFetching=false;}
+}
+
+function debouncedFetch(){clearTimeout(debounceTimer);debounceTimer=setTimeout(fetchBuildings,800);}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAP EVENTS
+// ═══════════════════════════════════════════════════════════════════
+map.on('load',()=>{
+  loadBasemap();
+  map.addLayer(scaffoldLayer);
+  restoreFromHash();
+  if(IS_DEMO){ loadDemoBuildings(); }
+  else{ fetchBuildings().then(restorePendingScaffolds); }
+});
+map.on('moveend',debouncedFetch);
+map.on('move',()=>{
+  document.getElementById('d-zoom').textContent=map.getZoom().toFixed(1);
+  document.getElementById('d-pitch').textContent=map.getPitch().toFixed(0)+'\u00B0';
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function setStatus(state,text){
+  const p=document.getElementById('status-pill');
+  p.className=state;
+  p.innerHTML=state==='loading'?'<span class="spinner"></span>'+text:text;
+  if(state==='ready'&&!text)p.classList.add('hidden');
+  else if(state==='ready')setTimeout(()=>p.classList.add('hidden'),3000);
+}
+
+function updateDebug(){
+  document.getElementById('d-count').textContent   =allBuildings.size;
+  document.getElementById('d-verts').textContent   =geoData.nodes.length;
+  document.getElementById('d-scaffolds').textContent=scaffoldBays.size;
+  document.getElementById('d-source').textContent  ='OSM+MS';
+  document.getElementById('d-zoom').textContent    =map.getZoom().toFixed(1);
+  document.getElementById('d-pitch').textContent   =map.getPitch().toFixed(0)+'\u00B0';
+  document.getElementById('d-fetches').textContent =fetchCount;
+  document.getElementById('d-last').textContent    =new Date().toLocaleTimeString();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GEOCODER
+// ═══════════════════════════════════════════════════════════════════
+const geoInput=document.getElementById('geocoder-input');
+const geoResults=document.getElementById('geocoder-results');
+let geoTimer=null;
+
+geoInput.addEventListener('input',()=>{
+  clearTimeout(geoTimer);
+  const q=geoInput.value.trim();
+  if(q.length<3){geoResults.style.display='none';return;}
+  geoTimer=setTimeout(()=>geocode(q),380);
+});
+geoInput.addEventListener('keydown',e=>{if(e.key==='Escape'){geoResults.style.display='none';geoInput.blur();}});
+
+async function geocode(q){
+  try{
+    const res=await fetch(`${API_BASE}/api/geocode?q=${encodeURIComponent(q)}`);
+    if(!res.ok){console.error('Geocode proxy',res.status);geoResults.innerHTML='<div class="result-item" style="color:#f87171">Search unavailable</div>';geoResults.style.display='block';return;}
+    const data=await res.json();
+    if(!data.length){geoResults.innerHTML='<div class="result-item" style="color:#94a3b8">No results found</div>';geoResults.style.display='block';return;}
+    geoResults.innerHTML=data.map(r=>`<div class="result-item" data-lat="${r.lat}" data-lon="${r.lon}">${r.display_name}</div>`).join('');
+    geoResults.style.display='block';
+    geoResults.querySelectorAll('.result-item').forEach(item=>{
+      item.addEventListener('click',()=>{
+        currentAddress=item.textContent;
+        map.flyTo({center:[parseFloat(item.dataset.lon),parseFloat(item.dataset.lat)],zoom:17,pitch:55,duration:2000});
+        geoInput.value=item.textContent;geoResults.style.display='none';
+      });
+    });
+  }catch(e){console.error('Geocode error:',e);geoResults.innerHTML='<div class="result-item" style="color:#f87171">Network error — try again</div>';geoResults.style.display='block';}
+}
+document.addEventListener('click',e=>{if(!e.target.closest('#geocoder'))geoResults.style.display='none';});
+
+// ═══════════════════════════════════════════════════════════════════
+// DEMO DATASET
+// ═══════════════════════════════════════════════════════════════════
+(function(){
+  if(IS_DEMO){
+    const badge=document.createElement('div');
+    badge.id='demo-badge';
+    badge.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);'
+      +'background:rgba(250,204,21,0.9);color:#1a1a2e;font-weight:700;font-size:12px;'
+      +'padding:4px 14px;border-radius:99px;z-index:9999;letter-spacing:.05em;pointer-events:none;';
+    badge.textContent='DEMO MODE — press T to run tests';
+    document.body.appendChild(badge);
+  }
+})();
+
+// Coordinate helpers: origin = Tower Bridge area
+function _p(xm,ym){ return [_OLNG+xm*LPM, _OLAT+ym*APM]; }
+function _r(cx,cy,w,d){
+  const hw=w/2, hd=d/2;
+  return [[cx-hw,cy-hd],[cx+hw,cy-hd],[cx+hw,cy+hd],[cx-hw,cy+hd],[cx-hw,cy-hd]]
+    .map(([x,y])=>_p(x,y));
+}
+function _poly(pts){ return pts.map(([x,y])=>_p(x,y)); }
+
+function buildDemoGeoJSON(){
+  const features=[];
+  let id=1;
+  function add(coords,height,name){
+    features.push({type:'Feature',
+      properties:{id:id++,height,name:'demo_'+name},
+      geometry:{type:'Polygon',coordinates:[coords]}});
+  }
+
+  // Row A — rectangular blocks, north of origin
+  add(_r(  0, 20, 14,  8), 12, 'A1');
+  add(_r( 20, 20, 10,  8), 16, 'A2');
+  add(_r( 35, 20,  8,  8),  9, 'A3');
+  add(_r(-18, 20, 12,  8), 20, 'A4');
+  add(_r(-32, 20,  8,  8), 14, 'A5');
+
+  // Row B — south of origin
+  add(_r(  0,-20, 16, 10), 18, 'B1');
+  add(_r( 22,-20, 10, 10), 11, 'B2');
+  add(_r( 38,-22,  8,  8), 24, 'B3');
+  add(_r(-20,-20, 12, 10), 15, 'B4');
+  add(_r(-36,-20,  8,  8),  8, 'B5');
+
+  // Row C — east cluster
+  add(_r( 60,  0, 10, 20), 13, 'C1');
+  add(_r( 60, 26, 10, 10), 19, 'C2');
+  add(_r( 60,-26, 10, 10),  7, 'C3');
+  add(_r( 76,  0,  8, 16), 22, 'C4');
+
+  // Row D — west cluster
+  add(_r(-60,  0, 10, 20), 10, 'D1');
+  add(_r(-60, 26, 10, 10), 17, 'D2');
+  add(_r(-60,-26, 10, 10), 26, 'D3');
+  add(_r(-76,  0,  8, 16), 12, 'D4');
+
+  // L-shaped building
+  add(_poly([
+    [ 10, 50],[26, 50],[26, 58],[20, 58],[20, 68],[10, 68],[10, 50]
+  ]),14,'E1');
+
+  // T-shaped building
+  add(_poly([
+    [-5, 50],[5, 50],[5, 56],[10, 56],[10, 62],[-10, 62],[-10, 56],[-5, 56],[-5, 50]
+  ]),11,'E2');
+
+  // U-shaped courtyard building (two rectangles side by side with gap)
+  add(_r(-28, 58, 8, 16),16,'F1');
+  add(_r(-14, 58, 8, 16),16,'F2');
+
+  // Tall tower block
+  add(_r(  0, 80,  8,  8), 45, 'G1');
+
+  // Low wide warehouse
+  add(_r( 50,-55, 30, 14),  5, 'H1');
+
+  // Small outbuildings
+  add(_r( 50,-75,  6,  6),  3, 'H2');
+  add(_r( 60,-75,  6,  6),  3, 'H3');
+
+  return {type:'FeatureCollection',features};
+}
+
+function loadDemoBuildings(){
+  const fc=buildDemoGeoJSON();
+  for(const f of fc.features){
+    const id=f.properties.id;
+    if(!allBuildings.has(id)) allBuildings.set(id,f);
+  }
+  processBuildings();
+  updateDeckLayers();
+  updateDebug();
+  document.getElementById('d-source').textContent='DEMO';
+  // Fly to demo origin so buildings are immediately visible
+  map.flyTo({center:[_OLNG,_OLAT],zoom:17,pitch:55,bearing:-10,duration:1200});
+  setStatus('ready','Demo buildings loaded — click a wall to place scaffold');
+  setTimeout(()=>setStatus('ready',''),4000);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TEST HARNESS
+// ═══════════════════════════════════════════════════════════════════
+window.runTests=function runTests(){
+  let pass=0,fail=0;
+  const results=[];
+
+  function assert(label,cond,detail=''){
+    if(cond){ pass++; results.push({ok:true,label}); }
+    else     { fail++; results.push({ok:false,label,detail}); }
+  }
+  function near(a,b,tol=0.001){ return Math.abs(a-b)<=tol; }
+
+  console.group('%c RigIt.ai Test Suite','font-size:14px;font-weight:bold;color:#22d3ee');
+
+  // ── A: Demo GeoJSON & coordinate helpers ──────────────────────
+  console.group('A — Demo GeoJSON & coordinate helpers');
+  const fc=buildDemoGeoJSON();
+  assert('A1 GeoJSON has ≥20 features', fc.features.length>=20,
+    `got ${fc.features.length}`);
+
+  const firstRing=fc.features[0].geometry.coordinates[0];
+  assert('A2 First polygon is closed',
+    JSON.stringify(firstRing[0])===JSON.stringify(firstRing[firstRing.length-1]));
+  assert('A3 Has numeric height', typeof fc.features[0].properties.height==='number');
+
+  // _p helper
+  const [olng,olat]=_p(0,0);
+  assert('A4 _p(0,0) = origin lng', near(olng,_OLNG));
+  assert('A5 _p(0,0) = origin lat', near(olat,_OLAT));
+  const [e100]=_p(100,0);
+  assert('A6 _p(100,0) offset ≈100m east', near((e100-_OLNG)/LPM,100,1));
+
+  // _r() produces CCW ring — signedArea uses [[x,y],...] with lng/lat as x,y
+  // For signedArea on local metres, build local version:
+  const sqPts=[[-5,-5],[5,-5],[5,5],[-5,5]]; // CCW square in local metres
+  const saLocal=signedArea(sqPts);
+  assert('A7 CCW square has positive signedArea', saLocal>0, `sa=${saLocal.toFixed(4)}`);
+
+  // _r ring in lng/lat (CCW after ensureCCW): just check it's closed and 5 points
+  const rRect=_r(0,0,10,10);
+  assert('A8 _r() returns 5-point closed ring', rRect.length===5 &&
+    JSON.stringify(rRect[0])===JSON.stringify(rRect[rRect.length-1]));
+  console.groupEnd();
+
+  // ── B: Building selection ──────────────────────────────────────
+  console.group('B — Building selection');
+  const bCount=allBuildings.size;
+  if(bCount===0){
+    assert('B0 Buildings loaded (need ?demo=true)', false,
+      'Open the page with ?demo=true then press T');
+  } else {
+    assert('B1 allBuildings populated', bCount>0, `count=${bCount}`);
+
+    // Find tower block (height=45) in allBuildings raw features
+    let towerFeature=null;
+    for(const [,f] of allBuildings){
+      if(f.properties&&f.properties.height===45){ towerFeature=f; break; }
+    }
+    assert('B2 Tower block (h=45) exists in allBuildings', towerFeature!==null);
+
+    if(towerFeature){
+      const model=buildSnapModel(towerFeature);
+      assert('B3 buildSnapModel returns valid model', model!==null&&model.edges.length>0);
+
+      if(model){
+        // Centroid should be inside its own ring (local coords)
+        const pip=pointInPolygonRC(model.ctr[0],model.ctr[1],model.localPts);
+        assert('B4 Centroid is inside its own polygon', pip);
+
+        // Far away point should be outside
+        const pip2=pointInPolygonRC(model.ctr[0]+9999,model.ctr[1]+9999,model.localPts);
+        assert('B5 Distant point is outside polygon', !pip2);
+
+        // All edges should have unit normals
+        let normalsOK=true;
+        for(const e of model.edges){
+          const l=Math.sqrt(e.normal[0]*e.normal[0]+e.normal[1]*e.normal[1]);
+          if(!near(l,1,0.001)){ normalsOK=false; break; }
+        }
+        assert('B6 All edge normals are unit length', normalsOK);
+      }
+    }
+
+    // All building rings in snap models should be CCW
+    let allCCW=true;
+    for(const [,f] of allBuildings){
+      const m=buildSnapModel(f);
+      if(m&&signedArea(m.localPts)<=0){ allCCW=false; break; }
+    }
+    assert('B7 All snap model rings are CCW', allCCW);
+  }
+  console.groupEnd();
+
+  // ── C: Wall selection & distance utilities ────────────────────
+  console.group('C — Wall selection & distance utilities');
+  // Synthetic CCW square in local metres: bottom edge is index 0
+  const sqRing=[[-5,-5],[5,-5],[5,5],[-5,5]];
+
+  // pointInPolygonRC — centroid (0,0) should be inside
+  assert('C1 PIP: centroid inside square', pointInPolygonRC(0,0,sqRing));
+  // corner point outside
+  assert('C2 PIP: far point outside square', !pointInPolygonRC(100,100,sqRing));
+  // on-edge point (edge case — may vary, just check it doesn't throw)
+  try{ pointInPolygonRC(-5,0,sqRing); assert('C3 PIP: edge point does not throw', true); }
+  catch(e){ assert('C3 PIP: edge point does not throw', false, e.message); }
+
+  // pointToSegmentDist — flat arg API: (px,py,ax,ay,bx,by)
+  assert('C4 ptSegDist: midpoint perp',
+    near(pointToSegmentDist(5,3, 0,0, 10,0), 3, 0.001));
+  assert('C5 ptSegDist: beyond end clamps',
+    near(pointToSegmentDist(15,0, 0,0, 10,0), 5, 0.001));
+  assert('C6 ptSegDist: before start clamps',
+    near(pointToSegmentDist(-3,4, 0,0, 10,0), 5, 0.001));
+  assert('C7 ptSegDist: on segment = 0',
+    near(pointToSegmentDist(5,0, 0,0, 10,0), 0, 0.001));
+
+  // Centroid-ray wall selection on synthetic square
+  if(allBuildings.size>0){
+    const [,anyF]=[...allBuildings][0];
+    const m=buildSnapModel(anyF);
+    if(m){
+      // selectWall should return an edge
+      const clickLocal=[m.ctr[0]+0.1,m.ctr[1]-4]; // click toward south
+      const wall=selectWall(m,clickLocal);
+      assert('C8 selectWall returns an edge', wall&&typeof wall.idx==='number');
+    } else assert('C8 selectWall (no model)', false, 'buildSnapModel returned null');
+  } else {
+    assert('C8 selectWall (skipped — no buildings)', false, 'need ?demo=true');
+  }
+  console.groupEnd();
+
+  // ── D: Grid snapping ──────────────────────────────────────────
+  console.group('D — Grid snapping');
+  function snapT(t,N){ return (Math.round(t*N-0.5)+0.5)/N; }
+
+  const wallLen=10, BAY_W=BAY_WIDTH||1.2;
+  const N=Math.floor(wallLen/BAY_W);
+  assert('D1 Bay count for 10m wall', N===Math.floor(10/BAY_W), `N=${N}`);
+
+  const snapped1=snapT(0.12,N);
+  assert('D2 t=0.12 snaps to first bay centre (≈0.5/N)',
+    near(snapped1,0.5/N,0.001),
+    `snapped=${snapped1.toFixed(4)} expected=${(0.5/N).toFixed(4)}`);
+
+  const snapped2=snapT(0.5,N);
+  assert('D3 t=0.5 snaps to valid bay centre',
+    snapped2>0&&snapped2<1, `snapped2=${snapped2}`);
+
+  assert('D4 snapT(0,N) ≥ 0',   snapT(0,N)>=0);
+  assert('D5 snapT(1,N) ≤ 1',   snapT(1,N)<=1);
+
+  // All snapped values should be at (k+0.5)/N for some integer k
+  let allCentres=true;
+  for(let t=0;t<=1;t+=0.07){
+    const st=snapT(t,N);
+    const k=Math.round(st*N-0.5);
+    if(!near(st,(k+0.5)/N,0.0001)){allCentres=false;break;}
+  }
+  assert('D6 All snapT outputs land on bay centres', allCentres);
+  console.groupEnd();
+
+  // ── E: Height integration ─────────────────────────────────────
+  console.group('E — Height integration');
+  assert('E1 BAY_HEIGHT constant ≈2m',
+    typeof BAY_HEIGHT==='number'&&near(BAY_HEIGHT,2,0.5), `BAY_HEIGHT=${BAY_HEIGHT}`);
+  assert('E2 BAY_WIDTH constant defined',
+    typeof BAY_WIDTH==='number'&&BAY_WIDTH>0, `BAY_WIDTH=${BAY_WIDTH}`);
+
+  if(allBuildings.size===0){
+    assert('E3 Buildings needed (skipped)', false, 'need ?demo=true');
+  } else {
+    let allHaveHeight=true;
+    for(const [,f] of allBuildings){
+      const h=f.properties&&f.properties.height;
+      if(typeof h!=='number'||h<=0){ allHaveHeight=false; break; }
+    }
+    assert('E3 All buildings have positive height', allHaveHeight);
+
+    let maxH=0;
+    for(const [,f] of allBuildings) if((f.properties.height||0)>maxH) maxH=f.properties.height;
+    assert('E4 Max building height ≥45 (tower)', maxH>=45, `maxH=${maxH}`);
+
+    // Scaffold bays should stack to cover building height
+    const towerH=45;
+    const baysNeeded=Math.ceil(towerH/BAY_HEIGHT);
+    assert('E5 Bays to cover tower (h=45, bay=2m) = 23', baysNeeded===23,
+      `baysNeeded=${baysNeeded}`);
+  }
+  console.groupEnd();
+
+  // ── F: Pricing calculator ─────────────────────────────────────
+  console.group('F — Pricing calculator');
+  const p0=calcPrice(0,45,4,false);
+  assert('F1 Zero bays → zero hire+labour+transport', p0.hire===0&&p0.labour===0&&p0.transport===0);
+  assert('F2 Zero bays → zero total', p0.total===0);
+
+  const p2=calcPrice(10,45,4,false);
+  assert('F3 hire = units×rate×weeks', p2.hire===10*45*4, `hire=${p2.hire}`);
+  assert('F4 labour = units×(erect+strip)', p2.labour===10*(RATE_LABOUR_ERECT+RATE_LABOUR_STRIP),
+    `labour=${p2.labour}`);
+  assert('F5 transport = ceil(10/20)×£180 = £180', p2.transport===180, `transport=${p2.transport}`);
+  assert('F6 subtotal = hire+labour+transport',
+    near(p2.subtotal, p2.hire+p2.labour+p2.transport,0.01));
+  assert('F7 no VAT → total = subtotal', p2.total===p2.subtotal);
+
+  const p3=calcPrice(10,45,4,true);
+  assert('F8 with VAT → total = subtotal×1.2',
+    near(p3.total,p2.subtotal*1.2,0.01), `total=${p3.total}`);
+
+  const p4=calcPrice(20,45,4,false);
+  assert('F9 20 bays → 1 lorry (ceil(20/20)=1)', p4.transport===180, `transport=${p4.transport}`);
+  const p5=calcPrice(21,45,4,false);
+  assert('F10 21 bays → 2 lorries (ceil(21/20)=2)', p5.transport===360, `transport=${p5.transport}`);
+
+  const p6=calcPrice(5,60,2,false);
+  assert('F11 5 bays @£60×2wk hire=600', p6.hire===600, `hire=${p6.hire}`);
+  console.groupEnd();
+
+  // ── Summary ───────────────────────────────────────────────────
+  console.groupEnd();
+
+  const pct=Math.round(pass/(pass+fail)*100);
+  const style=fail===0?'color:#22c55e;font-weight:bold':'color:#f87171;font-weight:bold';
+  console.log(`%c Results: ${pass}/${pass+fail} passed (${pct}%)`,style);
+  if(fail>0){
+    console.group('%c Failed tests','color:#f87171');
+    results.filter(r=>!r.ok).forEach(r=>
+      console.warn(`✗ ${r.label}${r.detail?' — '+r.detail:''}`));
+    console.groupEnd();
+  }
+  return {pass,fail,total:pass+fail,pct,results};
+};
+
+// ── Init ──────────────────────────────────────────────────────────
+updateDebug();
+updatePricing();
+</script>
+</body>
+</html>
