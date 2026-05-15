@@ -10,3 +10,5 @@ services:
         value: production
       - key: OS_API_KEY
         sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
