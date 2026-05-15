@@ -478,18 +478,12 @@ function findBuilding(lng,lat){
 }
 
 function selectWall(model,clickLocal){
-  const{ctr,edges}=model,rdx=clickLocal[0]-ctr[0],rdy=clickLocal[1]-ctr[1];
-  let bestEdge=null,bestT=Infinity;
-  if(Math.sqrt(rdx*rdx+rdy*rdy)>0.001){
-    for(const edge of edges){
-      const ex=edge.b[0]-edge.a[0],ey=edge.b[1]-edge.a[1],denom=rdx*ey-rdy*ex;
-      if(Math.abs(denom)<1e-12)continue;
-      const dx=edge.a[0]-ctr[0],dy=edge.a[1]-ctr[1];
-      const t=(dx*ey-dy*ex)/denom,s=(dx*rdy-dy*rdx)/denom;
-      if(t>0&&s>=0&&s<=1&&t<bestT){bestT=t;bestEdge=edge;}
-    }
+  const{edges}=model;
+  let bestEdge=null,minD=Infinity;
+  for(const e of edges){
+    const d=pointToSegmentDist(clickLocal[0],clickLocal[1],e.a[0],e.a[1],e.b[0],e.b[1]);
+    if(d<minD){minD=d;bestEdge=e;}
   }
-  if(!bestEdge){let minD=Infinity;for(const e of edges){const d=pointToSegmentDist(clickLocal[0],clickLocal[1],e.a[0],e.a[1],e.b[0],e.b[1]);if(d<minD){minD=d;bestEdge=e;}}}
   if(!bestEdge)return null;
   return{...bestEdge,numCells:Math.max(Math.floor(bestEdge.length/BAY_WIDTH),1)};
 }
@@ -1258,13 +1252,18 @@ map.on('click',e=>{
   if(!result){clearSelection();setStatus('snap','No building found');setTimeout(()=>setStatus('ready',''),2000);return;}
 
   const{id,feature,model,clickLocal}=result;
+
   selectedBuilding={id,feature,model};buildSelectedBuildingOutline();
 
+  // Pick the nearest wall to the click point
   const wall=selectWall(model,clickLocal);
   if(!wall){setStatus('error','Could not determine wall');updateAllOverlays();return;}
   selectedWall=wall;
 
-  const gs=snapToGrid(wall,clickLocal);
+  // Use hoveredGridCol if it's valid for this wall, otherwise compute from click
+  const gs=(hoveredGridCol>=0&&hoveredGridCol<wall.numCells)
+    ? (()=>{const t=(hoveredGridCol+0.5)/wall.numCells;return{col:hoveredGridCol,row:0,t,pos:[wall.a[0]+(wall.b[0]-wall.a[0])*t,wall.a[1]+(wall.b[1]-wall.a[1])*t]};})()
+    : snapToGrid(wall,clickLocal);
   const wId=wallId(id,wall.idx);
 
   if(isShift){
@@ -1294,10 +1293,16 @@ map.on('click',e=>{
 // ═══════════════════════════════════════════════════════════════════
 let hoverTimer=null;
 map.on('mousemove',e=>{
-  if(!selectedBuilding||!selectedWall)return;
+  if(!selectedBuilding)return;
   clearTimeout(hoverTimer);
   hoverTimer=setTimeout(()=>{
     const cl=toLocal(e.lngLat.lng,e.lngLat.lat,selectedBuilding.model.ref);
+    // Dynamically switch to nearest wall on hover
+    const nearest=selectWall(selectedBuilding.model,cl);
+    if(nearest&&(!selectedWall||nearest.idx!==selectedWall.idx)){
+      selectedWall=nearest;
+    }
+    if(!selectedWall)return;
     const gs=snapToGrid(selectedWall,cl);
     hoveredGridCol=gs.col;
     buildGridOverlay();buildSnapPreview();updateDeckLayers();updateSnapPanel(gs);
