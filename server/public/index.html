@@ -116,23 +116,23 @@ body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkM
 #snap-panel.hidden{opacity:0;pointer-events:none;}
 
 /* ── Geocoder ──────────────────────────────────────────────────── */
-#geocoder{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:20;width:340px;}
+#geocoder{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:20;width:480px;}
 #geocoder-input{
-  width:100%;padding:9px 14px 9px 36px;
+  width:100%;padding:13px 18px 13px 42px;
   background:rgba(8,14,28,.9);backdrop-filter:blur(16px);
-  border:1px solid rgba(34,211,238,.2);border-radius:10px;
-  color:#f1f5f9;font-size:13px;outline:none;transition:border-color .2s;
+  border:1px solid rgba(34,211,238,.2);border-radius:12px;
+  color:#f1f5f9;font-size:15px;outline:none;transition:border-color .2s;
 }
 #geocoder-input::placeholder{color:#475569;}
 #geocoder-input:focus{border-color:rgba(34,211,238,.5);}
-#geocoder-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#475569;font-size:15px;pointer-events:none;}
+#geocoder-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:17px;pointer-events:none;}
 #geocoder-results{
-  position:absolute;top:44px;left:0;right:0;
+  position:absolute;top:52px;left:0;right:0;
   background:rgba(8,14,28,.97);backdrop-filter:blur(16px);
-  border:1px solid rgba(34,211,238,.15);border-radius:10px;overflow:hidden;display:none;
+  border:1px solid rgba(34,211,238,.15);border-radius:12px;overflow:hidden;display:none;
 }
 #geocoder-results .result-item{
-  padding:9px 14px;cursor:pointer;font-size:12px;color:#cbd5e1;
+  padding:11px 16px;cursor:pointer;font-size:13px;color:#cbd5e1;
   border-bottom:1px solid rgba(255,255,255,.04);transition:background .12s;
 }
 #geocoder-results .result-item:hover{background:rgba(34,211,238,.08);color:#f1f5f9;}
@@ -166,6 +166,17 @@ body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkM
   pointer-events:none;white-space:nowrap;z-index:5;
   transition:opacity .2s;backdrop-filter:blur(6px);
 }
+/* ── Dimension labels ─────────────────────────────────────────── */
+.dim-label{
+  position:absolute;transform:translate(-50%,-50%);
+  background:rgba(8,14,28,.85);border:1px solid rgba(251,191,36,.3);
+  border-radius:4px;padding:1px 5px;font-size:9px;color:#fbbf24;
+  pointer-events:none;white-space:nowrap;z-index:6;
+  backdrop-filter:blur(6px);line-height:1.3;
+}
+.dim-label.dim-height{
+  border-color:rgba(34,197,94,.3);color:#22c55e;
+}
 
 /* ── Spinner ───────────────────────────────────────────────────── */
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -181,7 +192,7 @@ body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkM
   #sidebar{display:none;top:56px;max-height:calc(100vh - 72px);}
   #sidebar.open{display:flex;}
   #sidebar-toggle{display:block;}
-  #geocoder{width:calc(100% - 120px);left:60px;transform:none;}
+  #geocoder{width:calc(100% - 80px);left:50%;transform:translateX(-50%);}
 }
 </style>
 </head>
@@ -294,6 +305,9 @@ body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkM
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
     <button id="basemap-toggle" class="btn" style="flex:1;padding:6px;flex-direction:row;gap:4px;" onclick="toggleBasemap()">Hide Map</button>
   </div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;margin-top:6px;">
+    <button id="dims-toggle" class="btn" style="flex:1;padding:6px;flex-direction:row;gap:4px;" onclick="toggleDimensions()">Show Dimensions</button>
+  </div>
   <div class="stat">
     <span class="label">Opacity</span>
     <input type="range" min="0" max="1" step="0.05" value="0.45" style="width:100px;accent-color:#22d3ee;" oninput="setBasemapOpacity(this.value)">
@@ -308,14 +322,26 @@ body{background:#080E1C;overflow:hidden;font-family:'Inter',-apple-system,BlinkM
   </div>
 </div>
 
-<div id="snap-panel" class="panel hidden" style="top:430px !important;">
-  <h2>Wall Snap</h2>
-  <div class="stat"><span class="label">Building</span>    <span class="value" id="s-building">--</span></div>
+<div id="snap-panel" class="panel hidden" style="top:430px !important;max-height:calc(100vh - 450px);overflow-y:auto;">
+  <h2>Building Info</h2>
+  <div class="stat"><span class="label">Name</span>        <span class="value" id="s-building">--</span></div>
+  <div class="stat"><span class="label">Height</span>      <span class="value" id="s-bldg-height">--</span></div>
+  <div class="stat"><span class="label">Footprint</span>   <span class="value" id="s-bldg-area">--</span></div>
+  <div class="stat"><span class="label">Perimeter</span>   <span class="value" id="s-bldg-perim">--</span></div>
+  <div class="stat"><span class="label">Sides</span>       <span class="value" id="s-bldg-sides">--</span></div>
+  <div class="stat"><span class="label">Height conf.</span><span class="value" id="s-bldg-conf">--</span></div>
+  <div style="border-top:1px solid rgba(34,211,238,.1);margin:8px 0;"></div>
+  <h2>Selected Wall</h2>
   <div class="stat"><span class="label">Wall</span>        <span class="value" id="s-wall">--</span></div>
-  <div class="stat"><span class="label">Length</span>      <span class="value" id="s-walllen">--</span></div>
+  <div class="stat"><span class="label">Wall length</span> <span class="value" id="s-walllen">--</span></div>
+  <div class="stat"><span class="label">Wall height</span> <span class="value" id="s-wallht">--</span></div>
+  <div class="stat"><span class="label">Wall area</span>   <span class="value" id="s-wallarea">--</span></div>
   <div class="stat"><span class="label">Grid cells</span>  <span class="value" id="s-cells">--</span></div>
   <div class="stat"><span class="label">Placed</span>      <span class="value amber" id="s-placed">0</span></div>
   <div class="stat"><span class="label">Grid pos</span>    <span class="value green" id="s-gridpos">--</span></div>
+  <div style="border-top:1px solid rgba(34,211,238,.1);margin:8px 0;"></div>
+  <h2>All Sides</h2>
+  <div id="s-all-walls" style="font-size:11px;color:#94a3b8;"></div>
 </div>
 
 <!-- Geocoder -->
@@ -383,13 +409,17 @@ let sceneOriginMc = null;  // {x,y,z}
 // UI flags
 let gridVisible    = true;
 let labelsVisible  = false;
+let dimsVisible    = false;
 let currentAddress = '';
 
 // deck.gl overlay caches
 let gridLines = [], gridCells = [], selectedBuildingOutline = [], highlightWallLine = [], snapMarker = [];
+let searchHighlight = [];  // polygon data for searched building highlight
+let searchTargetLngLat = null;  // {lng,lat} of last search result click
 
 // Height label DOM elements
 const heightLabels = new Map();  // buildingId → HTMLElement
+const dimLabels = [];  // dimension label DOM elements
 
 // ═══════════════════════════════════════════════════════════════════
 // GEO MATH
@@ -804,12 +834,13 @@ function updateDeckLayers(){
     new deck.PathLayer({id:'ground-glow-3',data:groundPaths,getPath:d=>d,getWidth:1.2,widthUnits:'pixels',getColor:[103,232,249,242],jointRounded:true,capRounded:true,pickable:false}),
     new deck.PathLayer({id:'roof-outline',data:roofPaths,getPath:d=>d,getWidth:1.8,widthUnits:'pixels',getColor:[180,245,255,210],jointRounded:true,capRounded:true,pickable:false}),
     new deck.LineLayer({id:'vertical-edges',data:verticalLines,getSourcePosition:d=>d.src,getTargetPosition:d=>d.tgt,getWidth:1,widthUnits:'pixels',getColor:[14,165,233,153],pickable:false}),
-    new deck.ScatterplotLayer({id:'vertex-nodes',data:nodes,getPosition:d=>d,radiusUnits:'pixels',getRadius:2.2,getFillColor:[34,211,238,230],getLineColor:[255,255,255,180],stroked:true,lineWidthMinPixels:.8,antialiasing:true,pickable:false}),
+    new deck.ScatterplotLayer({id:'vertex-nodes',data:nodes,getPosition:d=>d,radiusUnits:'meters',getRadius:0.08,getFillColor:[34,211,238,150],getLineColor:[255,255,255,80],stroked:true,lineWidthMinPixels:.3,antialiasing:true,pickable:false}),
     new deck.PathLayer({id:'selected-outline',data:selectedBuildingOutline,getPath:d=>d.path,getWidth:3,widthUnits:'pixels',getColor:d=>d.color,jointRounded:true,capRounded:true,pickable:false}),
     new deck.PathLayer({id:'wall-highlight',data:highlightWallLine,getPath:d=>d.path,getWidth:4,widthUnits:'pixels',getColor:[251,191,36,180],jointRounded:true,capRounded:true,pickable:false}),
     new deck.PathLayer({id:'grid-lines',data:gLines,getPath:d=>d.path,getWidth:1,widthUnits:'pixels',getColor:[100,116,139,120],pickable:false}),
     new deck.PolygonLayer({id:'grid-cells',data:gCells,getPolygon:d=>d.contour,getFillColor:d=>d.color,extruded:false,material:false,stroked:false,pickable:false}),
     new deck.PolygonLayer({id:'snap-preview',data:snap,getPolygon:d=>d.contour,extruded:true,getElevation:d=>d.height,getFillColor:d=>d.color,material:false,stroked:false,pickable:false}),
+    new deck.PolygonLayer({id:'search-highlight',data:searchHighlight,getPolygon:d=>d.contour,extruded:true,getElevation:d=>d.height,getFillColor:[255,100,50,80],material:false,stroked:false,pickable:false}),
   ]});
 }
 
@@ -847,6 +878,33 @@ function buildSelectedBuildingOutline(){
   if(!selectedBuilding)return;
   const ring=selectedBuilding.model.ring,h=selectedBuilding.feature.properties.height||10;
   selectedBuildingOutline=[{path:ring.map(c=>[c[0],c[1],0]),color:[251,191,36,100]},{path:ring.map(c=>[c[0],c[1],h]),color:[251,191,36,80]}];
+}
+
+function highlightSearchedBuilding(){
+  searchHighlight=[];
+  if(!searchTargetLngLat)return;
+  const{lng,lat}=searchTargetLngLat;
+  let bestId=null,bestDist=Infinity;
+  for(const[id,feature]of allBuildings){
+    const model=buildSnapModel(feature);if(!model)continue;
+    const cl=toLocal(lng,lat,model.ref);
+    const inside=pointInPolygonRC(cl[0],cl[1],model.localPts);
+    if(inside){
+      // prefer smallest building if click is inside multiple
+      if(model.area<bestDist){bestDist=model.area;bestId=id;}
+    } else if(!bestId||bestDist===Infinity){
+      let minD=Infinity;
+      for(const e of model.edges){const d=pointToSegmentDist(cl[0],cl[1],e.a[0],e.a[1],e.b[0],e.b[1]);if(d<minD)minD=d;}
+      if(minD<bestDist){bestDist=minD;bestId=id;}
+    }
+  }
+  if(!bestId)return;
+  const f=allBuildings.get(bestId),g=f.geometry,h=(f.properties.height||10);
+  const rings=g.type==='Polygon'?[g.coordinates[0]]:g.type==='MultiPolygon'?g.coordinates.map(p=>p[0]):[];
+  for(const ring of rings){
+    if(!ring||ring.length<4)continue;
+    searchHighlight.push({contour:ring.map(c=>[c[0],c[1]]),height:h});
+  }
 }
 
 function buildSnapPreview(){
@@ -990,7 +1048,59 @@ function clearHeightLabels(){
   heightLabels.clear();
 }
 
-map.on('move',updateHeightLabels);
+map.on('move',()=>{updateHeightLabels();updateDimensionLabels();});
+
+// ═══════════════════════════════════════════════════════════════════
+// DIMENSION LABELS (width + height on each wall)
+// ═══════════════════════════════════════════════════════════════════
+function toggleDimensions(){
+  dimsVisible=!dimsVisible;
+  document.getElementById('dims-toggle').textContent=dimsVisible?'Hide Dimensions':'Show Dimensions';
+  updateDimensionLabels();
+}
+
+function clearDimLabels(){
+  for(const el of dimLabels)el.remove();
+  dimLabels.length=0;
+}
+
+function updateDimensionLabels(){
+  clearDimLabels();
+  if(!dimsVisible||!selectedBuilding)return;
+  const model=selectedBuilding.model;
+  if(!model)return;
+  const ref=model.ref;
+  const h=selectedBuilding.feature.properties.height||10;
+  const mapEl=document.getElementById('map');
+
+  for(let i=0;i<model.edges.length;i++){
+    const e=model.edges[i];
+    // Wall width label — at midpoint of edge, slightly offset outward
+    const mx=(e.a[0]+e.b[0])/2,my=(e.a[1]+e.b[1])/2;
+    const offX=mx+e.normal[0]*1.5,offY=my+e.normal[1]*1.5;
+    const gMid=toGlobal(offX,offY,ref);
+    const ptMid=map.project([gMid[0],gMid[1]]);
+    const wLabel=document.createElement('div');
+    wLabel.className='dim-label';
+    wLabel.textContent=e.length.toFixed(1)+'m';
+    wLabel.style.left=ptMid.x+'px';
+    wLabel.style.top=ptMid.y+'px';
+    mapEl.appendChild(wLabel);
+    dimLabels.push(wLabel);
+
+    // Wall height label — at midpoint of edge, at half building height
+    const gH=toGlobal(mx+e.normal[0]*2.5,my+e.normal[1]*2.5,ref);
+    const ptH=map.project([gH[0],gH[1]]);
+    // Offset vertically to simulate height position
+    const hLabel=document.createElement('div');
+    hLabel.className='dim-label dim-height';
+    hLabel.textContent='\u2195 '+h.toFixed(1)+'m';
+    hLabel.style.left=ptH.x+'px';
+    hLabel.style.top=(ptH.y-30)+'px';
+    mapEl.appendChild(hLabel);
+    dimLabels.push(hLabel);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // EXPORT — PDF QUOTE
@@ -1229,6 +1339,9 @@ document.addEventListener('keydown',e=>{
 map.on('click',e=>{
   const isShift=e.originalEvent.shiftKey;
 
+  // Clear search highlight on any map click
+  if(searchHighlight.length){searchHighlight=[];searchTargetLngLat=null;updateDeckLayers();}
+
   // Priority 1: scaffold hit?
   const hit=raycastScaffolds(e);
   if(hit){
@@ -1316,24 +1429,55 @@ function clearSelection(){
   selectedBuilding=null;selectedWall=null;hoveredWall=null;hoveredGridCol=-1;
   gridLines=[];gridCells=[];highlightWallLine=[];selectedBuildingOutline=[];snapMarker=[];
   document.getElementById('snap-panel').classList.add('hidden');
+  clearDimLabels();
   updateDeckLayers();
 }
 
 function updateAllOverlays(){
-  buildSelectedBuildingOutline();buildGridOverlay();buildSnapPreview();updateDeckLayers();
+  buildSelectedBuildingOutline();buildGridOverlay();buildSnapPreview();updateDeckLayers();updateDimensionLabels();
 }
 
 function updateSnapPanel(gs){
   const panel=document.getElementById('snap-panel');
   if(!selectedBuilding||!selectedWall){panel.classList.add('hidden');return;}
   panel.classList.remove('hidden');
-  const name=selectedBuilding.feature.properties.name||selectedBuilding.id;
-  document.getElementById('s-building').textContent=name.length>16?name.slice(0,15)+'\u2026':name;
-  document.getElementById('s-wall').textContent=`Edge ${selectedWall.idx}`;
+  const props=selectedBuilding.feature.properties||{};
+  const model=selectedBuilding.model;
+  const h=props.height||10;
+
+  // Building info
+  const name=props.name||props.addr_street||selectedBuilding.id;
+  document.getElementById('s-building').textContent=name.length>20?name.slice(0,19)+'\u2026':name;
+  document.getElementById('s-bldg-height').textContent=h.toFixed(1)+'m';
+  document.getElementById('s-bldg-area').textContent=model.area.toFixed(1)+'m\u00B2';
+  const perim=model.edges.reduce((s,e)=>s+e.length,0);
+  document.getElementById('s-bldg-perim').textContent=perim.toFixed(1)+'m';
+  document.getElementById('s-bldg-sides').textContent=model.edges.length;
+  const conf=props.os_height_confidence||props.confidence||'--';
+  document.getElementById('s-bldg-conf').textContent=typeof conf==='number'?Math.round(conf*100)+'%':conf;
+
+  // Selected wall
+  document.getElementById('s-wall').textContent=`Edge ${selectedWall.idx} of ${model.edges.length}`;
   document.getElementById('s-walllen').textContent=selectedWall.length.toFixed(1)+'m';
+  document.getElementById('s-wallht').textContent=h.toFixed(1)+'m';
+  const wallArea=selectedWall.length*h;
+  document.getElementById('s-wallarea').textContent=wallArea.toFixed(1)+'m\u00B2';
   document.getElementById('s-cells').textContent=selectedWall.numCells;
   document.getElementById('s-placed').textContent=placements.get(wallId(selectedBuilding.id,selectedWall.idx))?.size||0;
   if(gs)document.getElementById('s-gridpos').textContent=`col:${gs.col} row:${gs.row}`;
+
+  // All sides summary
+  const allWallsEl=document.getElementById('s-all-walls');
+  allWallsEl.innerHTML=model.edges.map((e,i)=>{
+    const wId=wallId(selectedBuilding.id,e.idx);
+    const placed=placements.get(wId)?.size||0;
+    const sel=e.idx===selectedWall.idx;
+    const sArea=(e.length*h).toFixed(1);
+    return`<div style="display:flex;justify-content:space-between;padding:2px 0;${sel?'color:#22d3ee;font-weight:600;':''}">
+      <span>Side ${i+1}</span>
+      <span>${e.length.toFixed(1)}m \u00D7 ${h.toFixed(1)}m = ${sArea}m\u00B2${placed?' \u2022 '+placed+' bays':''}</span>
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1346,21 +1490,49 @@ function getViewportRadius(){
   return Math.min(Math.max(R_EARTH*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)),50),5000);
 }
 
+let lastFetchCenter=null,lastFetchRadius=0;
+
+// Core fetch: pulls buildings for a given lat/lng/radius and merges into allBuildings
+async function _fetchArea(lat,lng,radius){
+  const res=await fetch(`${API_BASE}/api/buildings?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&radius=${radius}`);
+  if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw new Error(e.error||`HTTP ${res.status}`);}
+  const gj=await res.json();let added=0;
+  for(const f of(gj.features||[])){
+    const id=f.properties?.id||`anon_${f.geometry.coordinates[0]?.[0]?.[0]}_${f.geometry.coordinates[0]?.[0]?.[1]}`;
+    if(!allBuildings.has(id)){allBuildings.set(id,f);added++;}
+  }
+  return added;
+}
+
+// Priority fetch for searched location — small radius, fires immediately
+async function fetchSearchTarget(lng,lat){
+  try{
+    setStatus('loading','Fetching searched building…');
+    const added=await _fetchArea(lat,lng,150);
+    if(added>0){processBuildings();updateDeckLayers();}
+    if(searchTargetLngLat){highlightSearchedBuilding();updateDeckLayers();}
+    setStatus('ready',`${allBuildings.size} buildings loaded`);
+  }catch(err){console.error('Search target fetch error:',err);}
+}
+
 async function fetchBuildings(){
   if(map.getZoom()<14){setStatus('ready','Zoom in to load buildings');return;}
   if(isFetching)return;
-  isFetching=true;setStatus('loading','Fetching buildings…');
   const c=map.getCenter(),r=Math.round(getViewportRadius());
+  // Skip fetch if viewport hasn't moved much since last fetch
+  if(lastFetchCenter){
+    const dLat=(c.lat-lastFetchCenter.lat)*111320;
+    const dLng=(c.lng-lastFetchCenter.lng)*111320*Math.cos(c.lat*DEG2RAD);
+    const moved=Math.sqrt(dLat*dLat+dLng*dLng);
+    // Skip if moved less than 30% of last radius and radius hasn't grown much
+    if(moved<lastFetchRadius*0.3&&r<=lastFetchRadius*1.2)return;
+  }
+  isFetching=true;setStatus('loading','Fetching buildings…');
   try{
-    const res=await fetch(`${API_BASE}/api/buildings?lat=${c.lat.toFixed(6)}&lng=${c.lng.toFixed(6)}&radius=${r}`);
-    if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw new Error(e.error||`HTTP ${res.status}`);}
-    const gj=await res.json();let added=0;
-    for(const f of(gj.features||[])){
-      const id=f.properties?.id||`anon_${f.geometry.coordinates[0]?.[0]?.[0]}_${f.geometry.coordinates[0]?.[0]?.[1]}`;
-      if(!allBuildings.has(id)){allBuildings.set(id,f);added++;}
-    }
-    fetchCount++;
+    const added=await _fetchArea(c.lat,c.lng,r);
+    fetchCount++;lastFetchCenter={lat:c.lat,lng:c.lng};lastFetchRadius=r;
     if(added>0){processBuildings();updateDeckLayers();}
+    if(searchTargetLngLat){highlightSearchedBuilding();updateDeckLayers();}
     updateDebug();setStatus('ready',`${allBuildings.size} buildings loaded`);
   }catch(err){
     console.error('Fetch buildings error:',err);
@@ -1411,24 +1583,82 @@ function updateDebug(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// GEOCODER
+// GEOCODER — Google Places Autocomplete
 // ═══════════════════════════════════════════════════════════════════
 const geoInput=document.getElementById('geocoder-input');
 const geoResults=document.getElementById('geocoder-results');
 let geoTimer=null;
+let _gmReady=false;
+
+// Load Google Maps JS SDK with Places (New) library
+(async function initGooglePlaces(){
+  try{
+    const cfg=await fetch(`${API_BASE}/api/config`).then(r=>r.json());
+    if(!cfg.google_maps_key){console.warn('No Google Maps key — falling back to Nominatim');return;}
+    const script=document.createElement('script');
+    script.src=`https://maps.googleapis.com/maps/api/js?key=${cfg.google_maps_key}&libraries=places&loading=async`;
+    script.async=true;script.defer=true;
+    script.onload=()=>{_gmReady=true;};
+    document.head.appendChild(script);
+  }catch(e){console.warn('Could not load Google Maps:',e);}
+})();
 
 geoInput.addEventListener('input',()=>{
   clearTimeout(geoTimer);
   const q=geoInput.value.trim();
   if(q.length<3){geoResults.style.display='none';return;}
-  geoTimer=setTimeout(()=>geocode(q),380);
+  geoTimer=setTimeout(()=>geocode(q),300);
 });
 geoInput.addEventListener('keydown',e=>{if(e.key==='Escape'){geoResults.style.display='none';geoInput.blur();}});
 
 async function geocode(q){
+  // Use Google Places (New) API if available
+  if(_gmReady&&google?.maps?.places?.AutocompleteSuggestion){
+    try{
+      const{suggestions}=await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input:q,
+        includedRegionCodes:['gb']
+      });
+      if(!suggestions||!suggestions.length){
+        geoResults.innerHTML='<div class="result-item" style="color:#94a3b8">No results found</div>';
+        geoResults.style.display='block';return;
+      }
+      geoResults.innerHTML=suggestions.map((s,i)=>{
+        const desc=s.placePrediction?.text?.text||'Unknown';
+        return`<div class="result-item" data-idx="${i}">${desc}</div>`;
+      }).join('');
+      geoResults.style.display='block';
+      geoResults.querySelectorAll('.result-item').forEach(item=>{
+        item.addEventListener('click',async()=>{
+          const idx=parseInt(item.dataset.idx);
+          const pred=suggestions[idx]?.placePrediction;
+          if(!pred){return;}
+          try{
+            const place=pred.toPlace();
+            await place.fetchFields({fields:['location','formattedAddress']});
+            const loc=place.location;
+            if(loc){
+              currentAddress=place.formattedAddress||item.textContent;
+              searchTargetLngLat={lng:loc.lng(),lat:loc.lat()};
+              fetchSearchTarget(loc.lng(),loc.lat());
+              map.flyTo({center:[loc.lng(),loc.lat()],zoom:20.4,pitch:55,duration:2000});
+              geoInput.value=currentAddress;
+            }
+          }catch(e){console.error('Place details error:',e);}
+          geoResults.style.display='none';
+        });
+      });
+    }catch(e){
+      console.error('Autocomplete error:',e);
+      geoResults.innerHTML='<div class="result-item" style="color:#f87171">Search error — try again</div>';
+      geoResults.style.display='block';
+    }
+    return;
+  }
+  // Fallback: Nominatim
   try{
     const res=await fetch(`${API_BASE}/api/geocode?q=${encodeURIComponent(q)}`);
-    if(!res.ok){console.error('Geocode proxy',res.status);geoResults.innerHTML='<div class="result-item" style="color:#f87171">Search unavailable</div>';geoResults.style.display='block';return;}
+    if(!res.ok){geoResults.innerHTML='<div class="result-item" style="color:#f87171">Search unavailable</div>';geoResults.style.display='block';return;}
     const data=await res.json();
     if(!data.length){geoResults.innerHTML='<div class="result-item" style="color:#94a3b8">No results found</div>';geoResults.style.display='block';return;}
     geoResults.innerHTML=data.map(r=>`<div class="result-item" data-lat="${r.lat}" data-lon="${r.lon}">${r.display_name}</div>`).join('');
@@ -1436,7 +1666,10 @@ async function geocode(q){
     geoResults.querySelectorAll('.result-item').forEach(item=>{
       item.addEventListener('click',()=>{
         currentAddress=item.textContent;
-        map.flyTo({center:[parseFloat(item.dataset.lon),parseFloat(item.dataset.lat)],zoom:17,pitch:55,duration:2000});
+        const lon=parseFloat(item.dataset.lon),lat=parseFloat(item.dataset.lat);
+        searchTargetLngLat={lng:lon,lat};
+        fetchSearchTarget(lon,lat);
+        map.flyTo({center:[lon,lat],zoom:20.4,pitch:55,duration:2000});
         geoInput.value=item.textContent;geoResults.style.display='none';
       });
     });
