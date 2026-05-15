@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: buildings-cors-proxy
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OS_API_KEY
+        sync: false
