@@ -24,23 +24,29 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/buildings', buildingsRouter);
 
-// Geocode proxy — avoids browser CORS issues with Nominatim
+// Geocode proxy — Google Maps Geocoding API
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 app.get('/api/geocode', async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'q parameter required' });
+  if (!GOOGLE_MAPS_API_KEY) return res.status(503).json({ error: 'GOOGLE_MAPS_API_KEY not configured' });
   try {
     const fetch = require('node-fetch');
-    const url = 'https://nominatim.openstreetmap.org/search?format=json'
-      + `&q=${encodeURIComponent(q)}`
-      + '&limit=5&countrycodes=gb&addressdetails=1'
-      + '&viewbox=-8.6,49.9,1.8,60.8&bounded=0';
-    const r = await fetch(url, {
-      headers: { 'User-Agent': 'RigIt.ai/1.0 (scaffolding marketplace)' },
-      timeout: 10000
-    });
-    if (!r.ok) return res.status(r.status).json({ error: `Nominatim ${r.status}` });
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${GOOGLE_MAPS_API_KEY}&region=gb`;
+    const r = await fetch(url, { timeout: 10000 });
+    if (!r.ok) return res.status(r.status).json({ error: `Google Geocode ${r.status}` });
     const data = await r.json();
-    res.json(data);
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      console.error('Google Geocode API error:', data.status, data.error_message);
+      return res.status(502).json({ error: data.error_message || data.status });
+    }
+    // Map Google response to the format the frontend expects
+    const results = (data.results || []).slice(0, 5).map(r => ({
+      lat: r.geometry.location.lat,
+      lon: r.geometry.location.lng,
+      display_name: r.formatted_address
+    }));
+    res.json(results);
   } catch (err) {
     console.error('Geocode proxy error:', err.message);
     res.status(502).json({ error: 'Geocoding service unavailable' });
@@ -70,7 +76,7 @@ app.get('/api/os-tiles/:layer/:z/:x/:y.png', async (req, res) => {
 
 // Expose OS API key availability to frontend (not the key itself)
 app.get('/api/config', (_req, res) => {
-  res.json({ os_basemap: !!OS_API_KEY });
+  res.json({ os_basemap: !!OS_API_KEY, google_maps_key: GOOGLE_MAPS_API_KEY || '' });
 });
 
 app.use((_req, res) => {
